@@ -1,0 +1,1287 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1200</width>
+    <height>800</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>YOLO Training GUI</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      
+      <!-- Tab 1: Dataset Configuration -->
+      <widget class="QWidget" name="tab_dataset">
+       <attribute name="title">
+        <string>Dataset Configuration</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <item>
+         <widget class="QGroupBox" name="groupBox_dataset_selection">
+          <property name="title">
+           <string>Dataset Selection</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayout">
+           <item row="0" column="0">
+            <widget class="QLabel" name="label_yaml_file">
+             <property name="text">
+              <string>Select YAML file:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QLineEdit" name="lineEdit_yaml_path"/>
+           </item>
+           <item row="0" column="2">
+            <widget class="QPushButton" name="pushButton_yaml_browse">
+             <property name="text">
+              <string>Browse</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="label_quick_select">
+             <property name="text">
+              <string>Quick Select:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QComboBox" name="comboBox_quick_select">
+             <item>
+              <property name="text">
+               <string>03dataset.yaml</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>15dataset.yaml</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>32dataset.yaml</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+           <item row="1" column="2">
+            <widget class="QPushButton" name="pushButton_load_yaml">
+             <property name="text">
+              <string>Load</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QPushButton" name="pushButton_create_new">
+             <property name="text">
+              <string>Create New</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="groupBox_dataset_details">
+          <property name="title">
+           <string>Dataset Details</string>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_3">
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout">
+             <item>
+              <widget class="QLabel" name="label_dataset_path">
+               <property name="text">
+                <string>Dataset Path:</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLineEdit" name="lineEdit_dataset_path"/>
+             </item>
+             <item>
+              <widget class="QPushButton" name="pushButton_dataset_browse">
+               <property name="text">
+                <string>Browse</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="groupBox_classes">
+             <property name="title">
+              <string>Classes</string>
+             </property>
+             <layout class="QVBoxLayout" name="verticalLayout_classes">
+              <item>
+               <widget class="QScrollArea" name="scrollArea_classes">
+                <property name="widgetResizable">
+                 <bool>true</bool>
+                </property>
+                <widget class="QWidget" name="scrollAreaWidgetContents">
+                 <property name="geometry">
+                  <rect>
+                   <x>0</x>
+                   <y>0</y>
+                   <width>100</width>
+                   <height>100</height>
+                  </rect>
+                 </property>
+                 <layout class="QVBoxLayout" name="verticalLayout_classes_content"/>
+                </widget>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="pushButton_save_yaml">
+             <property name="text">
+              <string>Save YAML Changes</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      
+      <!-- Tab 2: Training Parameters -->
+      <widget class="QWidget" name="tab_training">
+       <attribute name="title">
+        <string>Training Parameters</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_4">
+        <item>
+         <widget class="QGroupBox" name="groupBox_training_params">
+          <property name="title">
+           <string>Training Parameters</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayout_2">
+           <item row="0" column="0">
+            <widget class="QLabel" name="label_model">
+             <property name="text">
+              <string>Model:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QComboBox" name="comboBox_model">
+             <item>
+              <property name="text">
+               <string>yolo11n.pt</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>yolo11s.pt</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>yolo11m.pt</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>yolo11l.pt</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>yolo11x.pt</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>yolov8n.pt</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>yolov8s.pt</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>yolov8m.pt</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>yolov8l.pt</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>yolov8x.pt</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+           <item row="0" column="2">
+            <widget class="QPushButton" name="pushButton_model_browse">
+             <property name="text">
+              <string>Browse</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="label_epochs">
+             <property name="text">
+              <string>Epochs:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QSpinBox" name="spinBox_epochs">
+             <property name="minimum">
+              <number>1</number>
+             </property>
+             <property name="maximum">
+              <number>1000</number>
+             </property>
+             <property name="value">
+              <number>100</number>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="label_imgsz">
+             <property name="text">
+              <string>Image Size:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QSpinBox" name="spinBox_imgsz">
+             <property name="minimum">
+              <number>32</number>
+             </property>
+             <property name="maximum">
+              <number>1280</number>
+             </property>
+             <property name="singleStep">
+              <number>32</number>
+             </property>
+             <property name="value">
+              <number>640</number>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="0">
+            <widget class="QLabel" name="label_lr0">
+             <property name="text">
+              <string>Initial Learning Rate:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="1">
+            <widget class="QDoubleSpinBox" name="doubleSpinBox_lr0">
+             <property name="decimals">
+              <number>4</number>
+             </property>
+             <property name="minimum">
+              <double>0.000100000000000</double>
+             </property>
+             <property name="maximum">
+              <double>1.000000000000000</double>
+             </property>
+             <property name="singleStep">
+              <double>0.000100000000000</double>
+             </property>
+             <property name="value">
+              <double>0.001000000000000</double>
+             </property>
+            </widget>
+           </item>
+           <item row="4" column="0">
+            <widget class="QLabel" name="label_lrf">
+             <property name="text">
+              <string>Final LR Factor:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="4" column="1">
+            <widget class="QDoubleSpinBox" name="doubleSpinBox_lrf">
+             <property name="decimals">
+              <number>2</number>
+             </property>
+             <property name="minimum">
+              <double>0.010000000000000</double>
+             </property>
+             <property name="maximum">
+              <double>1.000000000000000</double>
+             </property>
+             <property name="singleStep">
+              <double>0.010000000000000</double>
+             </property>
+             <property name="value">
+              <double>0.200000000000000</double>
+             </property>
+            </widget>
+           </item>
+           <item row="5" column="0">
+            <widget class="QLabel" name="label_patience">
+             <property name="text">
+              <string>Patience (0 to disable):</string>
+             </property>
+            </widget>
+           </item>
+           <item row="5" column="1">
+            <widget class="QSpinBox" name="spinBox_patience">
+             <property name="maximum">
+              <number>200</number>
+             </property>
+             <property name="value">
+              <number>0</number>
+             </property>
+            </widget>
+           </item>
+           <item row="6" column="0">
+            <widget class="QLabel" name="label_optimizer">
+             <property name="text">
+              <string>Optimizer:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="6" column="1">
+            <widget class="QComboBox" name="comboBox_optimizer">
+             <item>
+              <property name="text">
+               <string>Adam</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>AdamW</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>SGD</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>RMSProp</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="groupBox_advanced">
+          <property name="title">
+           <string>Advanced Training Options</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayout_3">
+           <item row="0" column="0">
+            <widget class="QCheckBox" name="checkBox_pretrained">
+             <property name="text">
+              <string>Use Pretrained Weights</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="label_save_period">
+             <property name="text">
+              <string>Save checkpoint every:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QSpinBox" name="spinBox_save_period">
+             <property name="maximum">
+              <number>100</number>
+             </property>
+             <property name="value">
+              <number>0</number>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="2">
+            <widget class="QLabel" name="label_epochs_unit">
+             <property name="text">
+              <string>epochs (0 to disable)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="label_device">
+             <property name="text">
+              <string>Device:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QComboBox" name="comboBox_device">
+             <item>
+              <property name="text">
+               <string>0</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>cpu</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>auto</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+           <item row="2" column="2">
+            <widget class="QLabel" name="label_gpu_info">
+             <property name="text">
+              <string>GPU Status</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="0">
+            <widget class="QLabel" name="label_batch_size">
+             <property name="text">
+              <string>Batch Size:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="1">
+            <widget class="QSpinBox" name="spinBox_batch_size">
+             <property name="minimum">
+              <number>1</number>
+             </property>
+             <property name="maximum">
+              <number>128</number>
+             </property>
+             <property name="value">
+              <number>16</number>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <spacer name="verticalSpacer">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="pushButton_start_training">
+          <property name="text">
+           <string>Start Training</string>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">font: bold; padding: 10px;</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      
+      <!-- Tab 3: Training Status -->
+      <widget class="QWidget" name="tab_status">
+       <attribute name="title">
+        <string>Training Status</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_5">
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_2">
+          <item>
+           <widget class="QLabel" name="label_training_status">
+            <property name="text">
+             <string>Training Status:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="horizontalSpacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="groupBox_progress">
+            <property name="title">
+             <string>Training Progress</string>
+            </property>
+            <layout class="QGridLayout" name="gridLayout_4">
+             <item row="0" column="0">
+              <widget class="QLabel" name="label_epoch">
+               <property name="text">
+                <string>Epoch:</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QLabel" name="label_epoch_value">
+               <property name="text">
+                <string>0/0</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="label_elapsed">
+               <property name="text">
+                <string>Elapsed:</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QLabel" name="label_elapsed_value">
+               <property name="text">
+                <string>00:00:00</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QTextEdit" name="textEdit_status">
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_3">
+          <item>
+           <widget class="QPushButton" name="pushButton_clear_log">
+            <property name="text">
+             <string>Clear Log</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="pushButton_save_log">
+            <property name="text">
+             <string>Save Log</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="checkBox_autoscroll">
+            <property name="text">
+             <string>Auto-scroll</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="horizontalSpacer_2">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+      
+      <!-- Tab 4: Model Evaluation -->
+      <widget class="QWidget" name="tab_evaluation">
+       <attribute name="title">
+        <string>Model Evaluation</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_6">
+        <item>
+         <widget class="QGroupBox" name="groupBox_eval_controls">
+          <property name="title">
+           <string>Evaluation Controls</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayout_5">
+           <item row="0" column="0">
+            <widget class="QLabel" name="label_eval_model">
+             <property name="text">
+              <string>Model:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QLineEdit" name="lineEdit_eval_model"/>
+           </item>
+           <item row="0" column="2">
+            <widget class="QPushButton" name="pushButton_eval_model_browse">
+             <property name="text">
+              <string>Browse</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="3">
+            <widget class="QPushButton" name="pushButton_load_model">
+             <property name="text">
+              <string>Load Model</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="label_confidence">
+             <property name="text">
+              <string>Confidence:</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QSlider" name="slider_confidence">
+             <property name="minimum">
+              <number>0</number>
+             </property>
+             <property name="maximum">
+              <number>100</number>
+             </property>
+             <property name="value">
+              <number>40</number>
+             </property>
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="2">
+            <widget class="QLabel" name="label_confidence_value">
+             <property name="text">
+              <string>0.40</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="3">
+            <layout class="QHBoxLayout" name="horizontalLayout_4">
+             <item>
+              <widget class="QCheckBox" name="checkBox_show_labels">
+               <property name="text">
+                <string>Show Labels</string>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QCheckBox" name="checkBox_show_conf">
+               <property name="text">
+                <string>Show Confidence</string>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QCheckBox" name="checkBox_show_measurements">
+               <property name="text">
+                <string>Show Measurements</string>
+               </property>
+               <property name="checked">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTabWidget" name="tabWidget_eval">
+          <property name="currentIndex">
+           <number>0</number>
+          </property>
+          
+          <!-- Single Image Tab -->
+          <widget class="QWidget" name="tab_single_image">
+           <attribute name="title">
+            <string>Single Image</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="verticalLayout_single_main">
+            <item>
+             <!-- Top section: Image Selection and Detection Results side by side -->
+             <layout class="QHBoxLayout" name="horizontalLayout_controls">
+              <item>
+               <widget class="QGroupBox" name="groupBox_image_selection">
+                <property name="title">
+                 <string>Image Selection</string>
+                </property>
+                <layout class="QVBoxLayout" name="verticalLayout_8">
+                 <item>
+                  <layout class="QHBoxLayout" name="horizontalLayout_6">
+                   <item>
+                    <widget class="QLabel" name="label_image">
+                     <property name="text">
+                      <string>Image:</string>
+                     </property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QLineEdit" name="lineEdit_image_path"/>
+                   </item>
+                   <item>
+                    <widget class="QPushButton" name="pushButton_image_browse">
+                     <property name="text">
+                      <string>Browse</string>
+                     </property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </item>
+                 <item>
+                  <widget class="QPushButton" name="pushButton_evaluate_image">
+                   <property name="text">
+                    <string>Evaluate Image</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <widget class="QGroupBox" name="groupBox_results">
+                <property name="title">
+                 <string>Detection Results</string>
+                </property>
+                <layout class="QVBoxLayout" name="verticalLayout_11">
+                 <item>
+                  <widget class="QTextEdit" name="textEdit_results">
+                   <property name="readOnly">
+                    <bool>true</bool>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <!-- Bottom section: Full Width Image Preview -->
+             <widget class="QGroupBox" name="groupBox_image_preview">
+              <property name="title">
+               <string>Image Preview</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_10">
+               <item>
+                <widget class="QLabel" name="label_image_viewer">
+                 <property name="minimumSize">
+                  <size>
+                   <width>1000</width>
+                   <height>600</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string>No image loaded</string>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignCenter</set>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          
+          <!-- Batch Evaluation Tab -->
+          <widget class="QWidget" name="tab_batch">
+           <attribute name="title">
+            <string>Batch Evaluation</string>
+           </attribute>
+           <layout class="QVBoxLayout" name="verticalLayout_12">
+            <item>
+             <layout class="QHBoxLayout" name="horizontalLayout_7">
+              <item>
+               <widget class="QLabel" name="label_batch_folder">
+                <property name="text">
+                 <string>Images Folder:</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLineEdit" name="lineEdit_batch_folder"/>
+              </item>
+              <item>
+               <widget class="QPushButton" name="pushButton_batch_browse">
+                <property name="text">
+                 <string>Browse</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="pushButton_evaluate_batch">
+                <property name="text">
+                 <string>Evaluate Batch</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="groupBox_batch_results">
+              <property name="title">
+               <string>Batch Results</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_13">
+               <item>
+                <widget class="QTableWidget" name="tableWidget_batch_results">
+                 <column>
+                  <property name="text">
+                   <string>Image</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Objects</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Classes</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Y-Diff (microns)</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Judgment</string>
+                  </property>
+                 </column>
+                 <column>
+                  <property name="text">
+                   <string>Time</string>
+                  </property>
+                 </column>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="groupBox_batch_preview">
+              <property name="title">
+               <string>Selected Image Preview</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayout_14">
+               <item>
+                <widget class="QLabel" name="label_batch_image_viewer">
+                 <property name="minimumSize">
+                  <size>
+                   <width>600</width>
+                   <height>300</height>
+                  </size>
+                 </property>
+                 <property name="text">
+                  <string>Double-click on a result to view image</string>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignCenter</set>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+      
+      <!-- Tab 5: Auto Annotation -->
+      <widget class="QWidget" name="tab_annotation">
+       <attribute name="title">
+        <string>Auto Annotation</string>
+       </attribute>
+       <layout class="QHBoxLayout" name="horizontalLayout_8">
+        <item>
+         <layout class="QVBoxLayout" name="verticalLayout_15">
+          <item>
+           <widget class="QGroupBox" name="groupBox_models">
+            <property name="title">
+             <string>Models</string>
+            </property>
+            <layout class="QGridLayout" name="gridLayout_6">
+             <item row="0" column="0">
+              <widget class="QLabel" name="label_yolo_model">
+               <property name="text">
+                <string>YOLO Model:</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QLineEdit" name="lineEdit_yolo_model"/>
+             </item>
+             <item row="0" column="2">
+              <widget class="QPushButton" name="pushButton_yolo_browse">
+               <property name="text">
+                <string>Browse</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="label_sam_model">
+               <property name="text">
+                <string>SAM Model:</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QLineEdit" name="lineEdit_sam_model"/>
+             </item>
+             <item row="1" column="2">
+              <widget class="QPushButton" name="pushButton_sam_browse">
+               <property name="text">
+                <string>Browse</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="0" colspan="3">
+              <widget class="QPushButton" name="pushButton_load_models">
+               <property name="text">
+                <string>Load Models</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="groupBox_annotation_dataset">
+            <property name="title">
+             <string>Dataset</string>
+            </property>
+            <layout class="QGridLayout" name="gridLayout_7">
+             <item row="0" column="0">
+              <widget class="QLabel" name="label_image_folder">
+               <property name="text">
+                <string>Image Folder:</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QLineEdit" name="lineEdit_annotation_folder"/>
+             </item>
+             <item row="0" column="2">
+              <widget class="QPushButton" name="pushButton_annotation_folder_browse">
+               <property name="text">
+                <string>Browse</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="label_output_folder">
+               <property name="text">
+                <string>Output Folder:</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QLineEdit" name="lineEdit_output_folder"/>
+             </item>
+             <item row="1" column="2">
+              <widget class="QPushButton" name="pushButton_output_folder_browse">
+               <property name="text">
+                <string>Browse</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="0">
+              <widget class="QLabel" name="label_annotation_mode">
+               <property name="text">
+                <string>Mode:</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="1" colspan="2">
+              <widget class="QComboBox" name="comboBox_annotation_mode">
+               <item>
+                <property name="text">
+                 <string>YOLO Only</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>SAM Only</string>
+                </property>
+               </item>
+               <item>
+                <property name="text">
+                 <string>YOLO+SAM Hybrid</string>
+                </property>
+               </item>
+              </widget>
+             </item>
+             <item row="3" column="0">
+              <widget class="QLabel" name="label_annotation_confidence">
+               <property name="text">
+                <string>Confidence:</string>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="1">
+              <widget class="QSlider" name="slider_annotation_confidence">
+               <property name="maximum">
+                <number>100</number>
+               </property>
+               <property name="value">
+                <number>25</number>
+               </property>
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="2">
+              <widget class="QLabel" name="label_annotation_confidence_value">
+               <property name="text">
+                <string>0.25</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="groupBox_actions">
+            <property name="title">
+             <string>Actions</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_16">
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_9">
+               <item>
+                <widget class="QPushButton" name="pushButton_previous">
+                 <property name="text">
+                  <string>Previous</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="pushButton_next">
+                 <property name="text">
+                  <string>Next</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QPushButton" name="pushButton_annotate_current">
+               <property name="text">
+                <string>Auto-annotate Current</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="pushButton_annotate_all">
+               <property name="text">
+                <string>Auto-annotate All Images</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="pushButton_save_annotations">
+               <property name="text">
+                <string>Save Annotations</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="groupBox_annotation_classes">
+            <property name="title">
+             <string>Classes to Annotate</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_17">
+             <item>
+              <widget class="QScrollArea" name="scrollArea_annotation_classes">
+               <property name="widgetResizable">
+                <bool>true</bool>
+               </property>
+               <widget class="QWidget" name="scrollAreaWidgetContents_2">
+                <property name="geometry">
+                 <rect>
+                  <x>0</x>
+                  <y>0</y>
+                  <width>100</width>
+                  <height>100</height>
+                 </rect>
+                </property>
+                <layout class="QVBoxLayout" name="verticalLayout_annotation_classes_content"/>
+               </widget>
+              </widget>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_10">
+               <item>
+                <widget class="QPushButton" name="pushButton_select_all">
+                 <property name="text">
+                  <string>Select All</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="pushButton_deselect_all">
+                 <property name="text">
+                  <string>Deselect All</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QVBoxLayout" name="verticalLayout_18">
+          <item>
+           <widget class="QGroupBox" name="groupBox_annotation_preview">
+            <property name="title">
+             <string>Image Preview</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_19">
+             <item>
+              <widget class="QLabel" name="label_annotation_viewer">
+               <property name="minimumSize">
+                <size>
+                 <width>600</width>
+                 <height>400</height>
+                </size>
+               </property>
+               <property name="text">
+                <string>No image loaded</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QGroupBox" name="groupBox_annotation_details">
+            <property name="title">
+             <string>Annotation Details</string>
+            </property>
+            <layout class="QVBoxLayout" name="verticalLayout_20">
+             <item>
+              <widget class="QTableWidget" name="tableWidget_annotations">
+               <property name="maximumSize">
+                <size>
+                 <width>16777215</width>
+                 <height>150</height>
+                </size>
+               </property>
+               <column>
+                <property name="text">
+                 <string>Class</string>
+                </property>
+               </column>
+               <column>
+                <property name="text">
+                 <string>Confidence</string>
+                </property>
+               </column>
+               <column>
+                <property name="text">
+                 <string>Box</string>
+                </property>
+               </column>
+              </widget>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="horizontalLayout_11">
+               <item>
+                <widget class="QPushButton" name="pushButton_delete_annotation">
+                 <property name="text">
+                  <string>Delete Selected</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="pushButton_edit_annotation">
+                 <property name="text">
+                  <string>Edit Selected</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="pushButton_add_manual_box">
+                 <property name="text">
+                  <string>Add Manual Box</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

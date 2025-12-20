@@ -1,0 +1,240 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                 PyQt Designer to Application Workflow                         ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+STEP 1: Design UI in Qt Designer
+┌────────────────────────────────┐
+│    Qt Designer (GUI Tool)      │
+│                                │
+│  • Drag & drop widgets         │
+│  • Set properties              │
+│  • Create layouts              │
+│  • Name widgets                │
+│                                │
+│  File → Save                   │
+└────────────┬───────────────────┘
+             │
+             │ Creates/Updates
+             ↓
+      ┌─────────────┐
+      │ testing.ui  │  ← XML file (human-readable)
+      └─────┬───────┘
+            │
+════════════════════════════════════════════════════════════════════════════════
+
+STEP 2: Convert to Python Code
+            │
+            │ Run command:
+            │ pyuic5 testing.ui -o ui_mainwindow.py
+            ↓
+    ┌──────────────────┐
+    │ ui_mainwindow.py │  ← Generated Python code
+    │                  │
+    │ class Ui_MainWindow:
+    │   def setupUi(self, MainWindow):
+    │     self.pushButton = QPushButton()
+    │     self.lineEdit = QLineEdit()
+    │     ...
+    └────────┬─────────┘
+             │
+             │ Import in your code
+             ↓
+════════════════════════════════════════════════════════════════════════════════
+
+STEP 3: Create Application Logic
+
+┌──────────────────────────────────────┐
+│         Your Application Code         │
+│         (ui/pyqt/app.py)             │
+│                                      │
+│  from ui_mainwindow import Ui_MainWindow
+│                                      │
+│  class MyApp(QMainWindow):          │
+│    def __init__(self):              │
+│      self.ui = Ui_MainWindow()     │
+│      self.ui.setupUi(self)         │  ← Load UI
+│      self._connect_signals()       │  ← Connect buttons
+│                                      │
+│    def _connect_signals(self):      │
+│      self.ui.pushButton.clicked     │
+│        .connect(self.on_click)     │  ← Wire up functionality
+│                                      │
+│    def on_click(self):              │
+│      # Your business logic here    │  ← What happens when clicked
+│      value = self.ui.lineEdit.text()
+│      self.process(value)            │
+└────────────┬─────────────────────────┘
+             │
+             │ Import in main.py
+             ↓
+════════════════════════════════════════════════════════════════════════════════
+
+STEP 4: Create Entry Point
+
+┌──────────────────────────────────────┐
+│           main.py                     │
+│                                      │
+│  from PyQt5.QtWidgets import QApplication
+│  from ui.pyqt.app import MyApp      │
+│                                      │
+│  def main():                         │
+│    app = QApplication(sys.argv)    │  ← Create Qt app
+│    window = MyApp()                │  ← Create window
+│    window.show()                   │  ← Show it
+│    sys.exit(app.exec_())          │  ← Run event loop
+│                                      │
+│  if __name__ == "__main__":        │
+│    main()                           │
+└────────────┬─────────────────────────┘
+             │
+             │ Run it!
+             ↓
+     ┌──────────────┐
+     │ python main.py│
+     └──────┬────────┘
+            │
+            ↓
+    ┌────────────────┐
+    │  Application   │  🎉 Your running app!
+    │    Window      │
+    │                │
+    │ [Button] [Input]
+    │                │
+    └────────────────┘
+
+════════════════════════════════════════════════════════════════════════════════
+
+KEY RELATIONSHIPS:
+
+testing.ui              ──→  Defines UI structure (XML)
+                            ↓ pyuic5 converts
+ui_mainwindow.py       ──→  Python representation of UI
+                            ↓ imported by
+ui/pyqt/app.py         ──→  Your application logic
+                            ↓ imported by
+main.py                ──→  Entry point / launcher
+
+════════════════════════════════════════════════════════════════════════════════
+
+EXAMPLE: Simple Button Click
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Qt Designer (testing.ui)                                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Add QPushButton                                                            │
+│  Set objectName = "pushButton_hello"                                        │
+│  Set text = "Say Hello"                                                     │
+│  Save                                                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Terminal                                                                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  $ pyuic5 testing.ui -o ui_mainwindow.py                                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ui_mainwindow.py (Generated - don't edit)                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  class Ui_MainWindow(object):                                               │
+│      def setupUi(self, MainWindow):                                         │
+│          self.pushButton_hello = QtWidgets.QPushButton(...)                │
+│          self.pushButton_hello.setText("Say Hello")                         │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ my_app.py (Your code)                                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  from ui_mainwindow import Ui_MainWindow                                    │
+│  from PyQt5.QtWidgets import QMainWindow, QMessageBox                      │
+│                                                                              │
+│  class MyApp(QMainWindow):                                                  │
+│      def __init__(self):                                                    │
+│          super().__init__()                                                 │
+│          self.ui = Ui_MainWindow()                                          │
+│          self.ui.setupUi(self)                                              │
+│                                                                              │
+│          # Connect button to method                                         │
+│          self.ui.pushButton_hello.clicked.connect(self.say_hello)          │
+│                                                                              │
+│      def say_hello(self):                                                   │
+│          QMessageBox.information(self, "Hello", "Hello, World!")           │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ main.py                                                                      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  import sys                                                                  │
+│  from PyQt5.QtWidgets import QApplication                                   │
+│  from my_app import MyApp                                                   │
+│                                                                              │
+│  if __name__ == "__main__":                                                 │
+│      app = QApplication(sys.argv)                                           │
+│      window = MyApp()                                                       │
+│      window.show()                                                          │
+│      sys.exit(app.exec_())                                                  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+                            $ python main.py
+                                    ↓
+                        ┌────────────────────┐
+                        │  [Say Hello]       │  ← Click button
+                        └──────────┬─────────┘
+                                   ↓
+                        ┌────────────────────┐
+                        │ ┌────────────────┐ │
+                        │ │ Hello          │ │
+                        │ │                │ │
+                        │ │ Hello, World!  │ │  ← Message appears!
+                        │ │                │ │
+                        │ │     [  OK  ]   │ │
+                        │ └────────────────┘ │
+                        └────────────────────┘
+
+════════════════════════════════════════════════════════════════════════════════
+
+MODIFICATION WORKFLOW:
+
+Need to change UI?
+    ↓
+Open testing.ui in Qt Designer
+    ↓
+Make changes
+    ↓
+Save (Ctrl+S)
+    ↓
+Run: pyuic5 testing.ui -o ui_mainwindow.py
+    ↓
+Restart your application
+    ↓
+Done! ✓
+
+Need to change functionality?
+    ↓
+Edit my_app.py (your code)
+    ↓
+No need to regenerate UI
+    ↓
+Restart your application
+    ↓
+Done! ✓
+
+════════════════════════════════════════════════════════════════════════════════
+
+REMEMBER:
+✓ Design in Qt Designer (testing.ui)
+✓ Convert with pyuic5 (ui_mainwindow.py)
+✓ Code logic in your files (my_app.py)
+✗ NEVER edit ui_mainwindow.py manually!
+
+See GUIDE_UI_TO_APP.md for detailed instructions!
+

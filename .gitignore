@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Application specific
+/dataset/
+/labelme_env
+/runs
+
+# Logs
+*.log
+*.xlsx
+
+# Temporary files
+*.tmp
+temp/
+captured_image.png
+
+# Documentation (keep only README)
+SETUP_INSTRUCTIONS.txt
+INTEGRATION_SUMMARY.txt
+DOCKER_INSTRUCTIONS.md
+*_SUMMARY.md
+*_GUIDE.txt
+
+# Docker
+.env
+.dockerignore
+
+# Models (optional - uncomment if models are large)
+# backend/models/*.pt
+# backend/models/*.pth
+

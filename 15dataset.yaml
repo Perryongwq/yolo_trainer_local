@@ -1,0 +1,10 @@
+path: C:/Users/mes0009c/Desktop/Coding/CT600/pyqt5-yolo-trainer/dataset
+train: train/images
+val: val/images
+nc: 5
+names:
+- block1_edge15
+- block2_edge15
+- block1_15
+- cal_mark
+- block2_15
