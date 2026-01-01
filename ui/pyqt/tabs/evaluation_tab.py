@@ -3,7 +3,7 @@ import os
 import cv2
 import numpy as np
 import threading
-from PyQt5.QtWidgets import QFileDialog, QMessageBox, QTableWidgetItem
+from PyQt5.QtWidgets import QFileDialog, QMessageBox, QTableWidgetItem, QSplitter
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtCore import Qt, pyqtSignal, QObject
 
@@ -55,6 +55,9 @@ class EvaluationTab:
         
         # Initialize UI state
         self._initialize_ui()
+        
+        # Optimize layout for better image preview
+        self._optimize_layout()
     
     def _connect_signals(self):
         """Connect Qt signals to handler methods"""
@@ -91,6 +94,73 @@ class EvaluationTab:
         
         # Set initial confidence display
         self._on_confidence_changed(self.ui.slider_confidence.value())
+    
+    def _optimize_layout(self):
+        """Optimize layout to maximize image preview space"""
+        try:
+            from PyQt5.QtWidgets import QSizePolicy
+            
+            # Minimize the Image Selection and Detection Results sections
+            if hasattr(self.ui, 'groupBox_image_selection'):
+                self.ui.groupBox_image_selection.setMaximumHeight(120)
+                self.ui.groupBox_image_selection.setSizePolicy(
+                    QSizePolicy.Preferred, QSizePolicy.Fixed)
+            
+            if hasattr(self.ui, 'groupBox_results'):
+                self.ui.groupBox_results.setMaximumHeight(120)
+                self.ui.groupBox_results.setSizePolicy(
+                    QSizePolicy.Preferred, QSizePolicy.Fixed)
+            
+            # Minimize the Detection Results text area
+            if hasattr(self.ui, 'textEdit_results'):
+                self.ui.textEdit_results.setMaximumHeight(60)
+                self.ui.textEdit_results.setSizePolicy(
+                    QSizePolicy.Expanding, QSizePolicy.Fixed)
+            
+            # Set the Image Preview group box to expand and take all available space
+            if hasattr(self.ui, 'groupBox_image_preview'):
+                self.ui.groupBox_image_preview.setSizePolicy(
+                    QSizePolicy.Expanding, QSizePolicy.Expanding)
+            
+            # Set size policies for image viewers to expand
+            if hasattr(self.ui, 'label_image_viewer'):
+                self.ui.label_image_viewer.setSizePolicy(
+                    QSizePolicy.Expanding, QSizePolicy.Expanding)
+                self.ui.label_image_viewer.setScaledContents(False)
+                self.ui.label_image_viewer.setAlignment(Qt.AlignCenter)
+            
+            if hasattr(self.ui, 'label_batch_image_viewer'):
+                self.ui.label_batch_image_viewer.setSizePolicy(
+                    QSizePolicy.Expanding, QSizePolicy.Expanding)
+                self.ui.label_batch_image_viewer.setScaledContents(False)
+                self.ui.label_batch_image_viewer.setAlignment(Qt.AlignCenter)
+            
+            # Ensure scroll areas expand properly
+            if hasattr(self.ui, 'scrollArea_image_preview'):
+                self.ui.scrollArea_image_preview.setSizePolicy(
+                    QSizePolicy.Expanding, QSizePolicy.Expanding)
+            
+            if hasattr(self.ui, 'scrollArea_batch_preview'):
+                self.ui.scrollArea_batch_preview.setSizePolicy(
+                    QSizePolicy.Expanding, QSizePolicy.Expanding)
+            
+            # Set stretch factors on the main vertical layout to prioritize image preview
+            if hasattr(self.ui, 'verticalLayout_single_main'):
+                # The layout has: horizontalLayout_controls (0), groupBox_image_preview (1)
+                self.ui.verticalLayout_single_main.setStretch(0, 0)  # Controls: no stretch
+                self.ui.verticalLayout_single_main.setStretch(1, 1)  # Image preview: max stretch
+            
+            # Minimize spacing and margins
+            if hasattr(self.ui, 'horizontalLayout_controls'):
+                self.ui.horizontalLayout_controls.setSpacing(5)
+                self.ui.horizontalLayout_controls.setContentsMargins(0, 0, 0, 0)
+            
+            if hasattr(self.ui, 'verticalLayout_single_main'):
+                self.ui.verticalLayout_single_main.setSpacing(5)
+            
+            self.logger.info("Layout optimized for better image preview")
+        except Exception as e:
+            self.logger.warning(f"Could not fully optimize layout: {str(e)}")
     
     def _browse_model(self):
         """Browse for model file"""
@@ -136,13 +206,19 @@ class EvaluationTab:
         self.ui.label_confidence_value.setText(f"{confidence:.2f}")
     
     def _load_image_to_viewer(self, image_path, label_widget):
-        """Load image to a QLabel widget (scrollable)"""
+        """Load image to a QLabel widget (scrollable) at 50% size"""
         pixmap = QPixmap(image_path)
         if not pixmap.isNull():
-            # Set pixmap at full size to enable scrolling
-            label_widget.setPixmap(pixmap)
-            # Resize label to pixmap size to enable scrolling
-            label_widget.resize(pixmap.size())
+            # Scale image to 50% of original size
+            scaled_pixmap = pixmap.scaled(
+                pixmap.width() // 2, 
+                pixmap.height() // 2,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
+            label_widget.setPixmap(scaled_pixmap)
+            # Resize label to scaled pixmap size to enable scrolling
+            label_widget.resize(scaled_pixmap.size())
         else:
             label_widget.setText("Failed to load image")
     
@@ -372,12 +448,18 @@ class EvaluationTab:
         q_image = QImage(img_rgb.data, width, height, bytes_per_line, QImage.Format_RGB888)
         pixmap = QPixmap.fromImage(q_image)
         
-        # Display at full size to enable scrolling
+        # Display at 50% size to enable better viewing
         if not pixmap.isNull():
-            # Set pixmap at full size to enable scrolling
-            label_widget.setPixmap(pixmap)
-            # Resize label to pixmap size to enable scrolling
-            label_widget.resize(pixmap.size())
+            # Scale image to 50% of original size
+            scaled_pixmap = pixmap.scaled(
+                pixmap.width() // 2, 
+                pixmap.height() // 2,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
+            label_widget.setPixmap(scaled_pixmap)
+            # Resize label to scaled pixmap size to enable scrolling
+            label_widget.resize(scaled_pixmap.size())
         else:
             label_widget.setText("Failed to create annotated image")
     
@@ -463,10 +545,9 @@ class EvaluationTab:
             class_name = self.model_manager.get_class_name(int(cls.item()))
             class_counts[class_name] = class_counts.get(class_name, 0) + 1
         
-        # Display detection counts
-        result_text = f"Found {len(results[0].boxes)} objects:\n\n"
-        for class_name, count in class_counts.items():
-            result_text += f"- {class_name}: {count}\n"
+        # Display detection counts - More compact format
+        result_text = f"Detected {len(results[0].boxes)} objects: "
+        result_text += ", ".join([f"{name}({count})" for name, count in class_counts.items()])
         
         self.ui.textEdit_results.setText(result_text)
         
