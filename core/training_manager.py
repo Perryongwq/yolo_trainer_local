@@ -73,10 +73,11 @@ class TrainingManager:
         self.is_training = True
         
         # Start training in a separate thread
+        # Use daemon=False to prevent thread from being killed when main thread exits
         self.training_thread = threading.Thread(
             target=self._run_training,
             args=(model_path, dataset_path, params),
-            daemon=True
+            daemon=False
         )
         self.training_thread.start()
         
@@ -183,15 +184,28 @@ class TrainingManager:
             output_stream = CustomStream(lambda text: self.on_training_progress(text.rstrip()))
             
             # Redirect stdout and stderr to our custom stream to capture all output
-            with redirect_stdout(output_stream), redirect_stderr(output_stream):
-                # Start training
-                self.on_training_progress("--- TRAINING OUTPUT ---")
-                results = model.train(**train_args)
-            
-            self.on_training_progress("--- END OF TRAINING OUTPUT ---")
-            
-            # Training completed successfully
-            self.on_training_completed(True, "Training complete!", results)
+            try:
+                with redirect_stdout(output_stream), redirect_stderr(output_stream):
+                    # Start training
+                    self.on_training_progress("--- TRAINING OUTPUT ---")
+                    results = model.train(**train_args)
+                
+                self.on_training_progress("--- END OF TRAINING OUTPUT ---")
+                
+                # Training completed successfully
+                self.on_training_completed(True, "Training complete!", results)
+            except KeyboardInterrupt:
+                # Handle keyboard interrupt gracefully
+                self.on_training_progress("Training interrupted by user")
+                self.on_training_error("Training was interrupted", KeyboardInterrupt())
+                # Don't re-raise to prevent application termination
+            except SystemExit as e:
+                # Catch SystemExit to prevent it from killing the application
+                # This can happen if YOLO or a dependency calls sys.exit()
+                self.on_training_progress(f"Warning: Training process attempted to exit (code: {e.code})")
+                self.on_training_error("Training process exited unexpectedly", e)
+                # Don't re-raise SystemExit to prevent application termination
+                # Log the exit but continue running the application
             
         except Exception as e:
             error_message = f"Error during training: {str(e)}"
@@ -225,12 +239,27 @@ class TrainingManager:
             self.on_training_error(error_message, e)
             
         finally:
+            # Always reset training state, even if there was an error
             self.is_training = False
             self.stop_event.set()
+            
             # Ensure any remaining plots are closed safely
             try:
                 plt.close('all')
-            except:
+            except Exception:
+                pass
+            
+            # Ensure matplotlib backend is properly set
+            try:
+                matplotlib.use('Agg')
+                plt.ioff()
+            except Exception:
+                pass
+            
+            # Log that training thread is completing
+            try:
+                self.on_training_progress("Training thread completed")
+            except Exception:
                 pass
     
     def _resolve_model_path(self, model_name):

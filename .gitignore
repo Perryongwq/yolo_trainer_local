@@ -30,7 +30,7 @@ desktop.ini
 # Application specific
 /dataset/
 /labelme_env
-/runs
+/runs/detect
 
 # Logs
 *.log
