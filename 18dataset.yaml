@@ -1,10 +1,10 @@
-path: C:/Common/MES CT600 Program/CT600 Model Training/18item/18item_24_12_dataset
+path: C:/Common/CT600 Image Data/18 item Dataset/433_18item_19_1_26
 train: train/images
 val: val/images
 nc: 5
 names:
-- block1_15
-- block2_edge15
-- block2_15
-- block2_edge15
+- block1
+- block1_edge
+- block2
+- block2_edge
 - cal_mark

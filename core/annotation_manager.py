@@ -2,6 +2,7 @@ import os
 import cv2
 import numpy as np
 import threading
+import torch
 from utils.event import Event
 
 class AnnotationManager:
@@ -28,6 +29,7 @@ class AnnotationManager:
         # SAM model properties
         self.sam_model = None
         self.sam_predictor = None
+        self.sam_device = None
         
         # Check if SAM is available
         self.sam_available = self._check_sam_available()
@@ -69,6 +71,9 @@ class AnnotationManager:
         try:
             from segment_anything import sam_model_registry, SamPredictor
             
+            # Detect available device (CUDA/CPU)
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            
             # Determine model type from filename
             model_type = "vit_h"  # Default to highest quality
             if "vit_b" in model_path.lower():
@@ -78,7 +83,12 @@ class AnnotationManager:
             
             # Load SAM model
             self.sam_model = sam_model_registry[model_type](checkpoint=model_path)
+            # Move model to appropriate device
+            self.sam_model.to(device=device)
             self.sam_predictor = SamPredictor(self.sam_model)
+            
+            # Store device for reference
+            self.sam_device = device
             
             return True
             

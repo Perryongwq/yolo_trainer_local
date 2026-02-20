@@ -43,7 +43,7 @@ class EvaluationTab:
         self.MICRONS_PER_PIXEL = 2.3
         self.BLOCK1_OFFSET = 0.0
         self.BLOCK2_OFFSET = 0.0
-        self.MEASUREMENT_OFFSET_MICRONS = 5.0  # Offset to apply to final measurement
+        self.MEASUREMENT_OFFSET_MICRONS = 0.0  # Offset to apply to final measurement
         self.judgment_criteria = {"good": 10, "acceptable": 20}
         
         # Connect UI signals to handlers
@@ -222,6 +222,80 @@ class EvaluationTab:
         else:
             label_widget.setText("Failed to load image")
     
+    def _calculate_measurements(self, results):
+        """
+        Calculate Y-difference and judgment from detection results
+        
+        Args:
+            results: YOLO inference results
+            
+        Returns:
+            tuple: (y_diff_microns, judgment, microns_per_pixel) or (None, None, None) if edges not found
+        """
+        if not hasattr(results.boxes, 'xyxy') or len(results.boxes.xyxy) == 0:
+            return None, None, None
+        
+        boxes = results.boxes.xyxy.cpu().numpy()
+        classes = results.boxes.cls.cpu().numpy()
+        boxes_xywh = results.boxes.xywh.cpu().numpy()
+        
+        block1_edge_y = None
+        block2_edge_y = None
+        calibration_marker_width_px = None
+        microns_per_pixel = self.MICRONS_PER_PIXEL  # Default fallback
+        
+        # First pass: Find calibration marker to calculate microns_per_pixel
+        for i, (box, box_xywh, cls) in enumerate(zip(boxes, boxes_xywh, classes)):
+            x_center, y_center, width_box, height_box = box_xywh
+            class_name = self.model_manager.get_class_name(int(cls))
+            width = width_box
+            
+            if class_name == "cal_mark":
+                if hasattr(width, 'item'):
+                    calibration_marker_width_px = width.item()
+                else:
+                    calibration_marker_width_px = float(width)
+                break  # Found calibration marker
+        
+        # Calculate microns per pixel from calibration marker if detected
+        if calibration_marker_width_px:
+            microns_per_pixel = 1000.0 / calibration_marker_width_px
+            self.logger.info(f"Using calibration from image: {microns_per_pixel:.2f} um/pixel")
+        else:
+            self.logger.warning(f"No cal_mark detected, using default: {microns_per_pixel:.2f} um/pixel")
+        
+        # Second pass: Calculate edge positions using calibrated microns_per_pixel
+        for i, (box, box_xywh, cls) in enumerate(zip(boxes, boxes_xywh, classes)):
+            x_center, y_center, width_box, height_box = box_xywh
+            class_name = self.model_manager.get_class_name(int(cls))
+            
+            y_center = int(y_center)
+            height = int(height_box)
+            
+            if class_name == "block1_edge" or class_name == "block1_edge15":
+                edge_y = int(y_center + height / 2)
+                block1_edge_y = edge_y + (self.BLOCK1_OFFSET / microns_per_pixel)
+            elif class_name == "block2_edge" or class_name == "block2_edge15":
+                edge_y = int(y_center + height / 2)
+                block2_edge_y = edge_y + (self.BLOCK2_OFFSET / microns_per_pixel)
+        
+        # Calculate Y-difference if both edges detected
+        if block1_edge_y is not None and block2_edge_y is not None:
+            y_diff_pixels = block1_edge_y - block2_edge_y
+            y_diff_microns = (y_diff_pixels * microns_per_pixel) + self.MEASUREMENT_OFFSET_MICRONS
+            
+            # Determine judgment based on signed difference
+            if y_diff_microns < self.judgment_criteria["good"]:
+                judgment = "Good"
+            elif y_diff_microns < self.judgment_criteria["acceptable"]:
+                judgment = "Acceptable"
+            else:
+                judgment = "No Good"
+            
+            return y_diff_microns, judgment, microns_per_pixel
+        
+        return None, None, microns_per_pixel
+    
     def _draw_annotated_image(self, image_path, results, label_widget):
         """Draw annotated image with detection results"""
         from PyQt5.QtGui import QPainter, QPen, QFont, QColor
@@ -257,6 +331,33 @@ class EvaluationTab:
             # Get xywh format for center calculations
             boxes_xywh = results.boxes.xywh.cpu().numpy()
             
+            # First pass: Find calibration marker to calculate microns_per_pixel BEFORE drawing
+            for i, (box, box_xywh, cls, conf) in enumerate(zip(boxes, boxes_xywh, classes, confidences)):
+                x_center, y_center, width_box, height_box = box_xywh
+                class_name = self.model_manager.get_class_name(int(cls))
+                width = width_box
+                
+                if class_name == "cal_mark":
+                    # Store calibration marker width
+                    if hasattr(width, 'item'):
+                        calibration_marker_width_px = width.item()
+                    else:
+                        calibration_marker_width_px = float(width)
+                    break  # Found calibration marker
+            
+            # Calculate microns per pixel from calibration marker if detected
+            if calibration_marker_width_px:
+                microns_per_pixel = 1000.0 / calibration_marker_width_px
+                self.logger.info(f"Calibration: cal_mark width = {calibration_marker_width_px:.2f}px, "
+                               f"microns/px = {microns_per_pixel:.2f}")
+                
+                # Check if microns per pixel is too high
+                if microns_per_pixel > 10:
+                    self.logger.warning("Microns per pixel too high, suggesting focus adjustment")
+            else:
+                self.logger.warning(f"cal_mark not detected, using default: {microns_per_pixel:.2f} um/pixel")
+            
+            # Second pass: Draw all detections with calibrated microns_per_pixel
             for i, (box, box_xywh, cls, conf) in enumerate(zip(boxes, boxes_xywh, classes, confidences)):
                 x1, y1, x2, y2 = map(int, box)
                 x_center, y_center, width_box, height_box = box_xywh
@@ -269,29 +370,29 @@ class EvaluationTab:
                 width = width_box
                 
                 # Check for specific classes (matching app_fastapi.py)
-                if class_name == "block1_edge15":
+                if class_name == "block1_edge" or class_name == "block1_edge15":
                     # Calculate edge position (bottom of detection box)
                     edge_y = int(y_center + height / 2)
                     # Apply offset and store edge position (matching app_fastapi.py)
                     block1_edge_y = edge_y + (self.BLOCK1_OFFSET / microns_per_pixel)
-                    # Draw line from x_center - 150 to x_center + 150 (matching app_fastapi.py)
+                    # Draw longer line from x_center - 300 to x_center + 300 (increased from 150)
                     cv2.line(img_rgb, 
-                            (int(x_center - 150), edge_y),
-                            (int(x_center + 150), edge_y),
+                            (int(x_center - 300), edge_y),
+                            (int(x_center + 300), edge_y),
                             (255, 0, 0),  # Red in RGB (matching app_fastapi.py)
                             2)
                     label_y_pos = edge_y
                     color = (255, 0, 0)
                     is_edge_class = True
-                elif class_name == "block2_edge15":
+                elif class_name == "block2_edge" or class_name == "block2_edge15":
                     # Calculate edge position (bottom of detection box)
                     edge_y = int(y_center + height / 2)
                     # Apply offset and store edge position (matching app_fastapi.py)
                     block2_edge_y = edge_y + (self.BLOCK2_OFFSET / microns_per_pixel)
-                    # Draw line from x_center - 150 to x_center + 150 (matching app_fastapi.py)
+                    # Draw longer line from x_center - 300 to x_center + 300 (increased from 150)
                     cv2.line(img_rgb,
-                            (int(x_center - 150), edge_y),
-                            (int(x_center + 150), edge_y),
+                            (int(x_center - 300), edge_y),
+                            (int(x_center + 300), edge_y),
                             (0, 255, 255),  # Cyan in RGB (matching app_fastapi.py)
                             2)
                     label_y_pos = edge_y
@@ -306,7 +407,7 @@ class EvaluationTab:
                         calibration_marker_width_px = float(width)
                     # Don't draw calibration marker, just store its value
                     continue
-                elif class_name == "block1_15" or class_name == "block2_15":
+                elif class_name in ["block1", "block1_15", "block2", "block2_15"]:
                     # Track block positions but don't draw special lines
                     block_y = int(y_center + height / 2)
                     # Regular bounding box
@@ -342,8 +443,8 @@ class EvaluationTab:
                     
                     # Position label based on detection type
                     if is_edge_class:
-                        # For edge classes, position label to the right of the line
-                        label_x = x_center + 150
+                        # For edge classes, position label to the right of the longer line
+                        label_x = x_center + 300
                         label_y = label_y_pos
                     else:
                         # For regular boxes, position at top
@@ -373,9 +474,9 @@ class EvaluationTab:
                         width_px = x2 - x1
                         height_px = y2 - y1
                         
-                        # Convert to microns
-                        width_microns = width_px * self.MICRONS_PER_PIXEL
-                        height_microns = height_px * self.MICRONS_PER_PIXEL
+                        # Convert to microns using calibrated value
+                        width_microns = width_px * microns_per_pixel
+                        height_microns = height_px * microns_per_pixel
                         
                         meas_text = f"W:{width_microns:.1f}μm H:{height_microns:.1f}μm"
                         meas_x = x1
@@ -385,18 +486,6 @@ class EvaluationTab:
                     cv2.putText(img_rgb, meas_text,
                               (meas_x, meas_y),
                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-            
-            # Calculate microns per pixel from calibration marker if detected (matching app_fastapi.py)
-            if calibration_marker_width_px:
-                microns_per_pixel = 1000.0 / calibration_marker_width_px
-                self.logger.info(f"Calibration: cal_mark width = {calibration_marker_width_px:.2f}px, "
-                               f"microns/px = {microns_per_pixel:.2f}")
-                
-                # Check if microns per pixel is too high (matching app_fastapi.py)
-                if microns_per_pixel > 10:
-                    self.logger.warning("Microns per pixel too high, suggesting focus adjustment")
-            else:
-                self.logger.warning("cal_mark not detected, using default microns per pixel")
             
             # Display microns per pixel on image (top left)
             cal_text = f"{microns_per_pixel:.2f} um/pixel"
@@ -424,13 +513,13 @@ class EvaluationTab:
                 text_x = w // 2 + 250
                 text_y = int((block1_edge_y + block2_edge_y) / 2)
                 
-                # Draw Y-difference text (matching app_fastapi.py format)
+                # Draw Y-difference measurement first (at top)
                 diff_text = f"{y_diff_microns:.2f} microns"
                 cv2.putText(img_rgb, diff_text,
                            (text_x - 100, text_y),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
                 
-                # Draw judgment text (matching app_fastapi.py format)
+                # Draw judgment text below Y-difference
                 judgment_text = f"Judgment: {judgment}"
                 cv2.putText(img_rgb, judgment_text,
                            (text_x - 100, text_y + 40),
@@ -626,13 +715,24 @@ class EvaluationTab:
                 
                 classes_str = ", ".join([f"{name} ({count})" for name, count in classes.items()])
                 
+                # Calculate Y-diff and judgment
+                y_diff_microns, judgment, microns_per_pixel = None, None, None
+                y_diff_str = "N/A"
+                judgment_str = "N/A"
+                
+                if len(results) > 0:
+                    y_diff_microns, judgment, microns_per_pixel = self._calculate_measurements(results[0])
+                    if y_diff_microns is not None:
+                        y_diff_str = f"{y_diff_microns:.2f}"
+                        judgment_str = judgment
+                
                 # Store result
                 result_item = {
                     "path": img_path,
                     "objects": num_objects,
                     "classes": classes_str if classes_str else "None",
-                    "y_diff": "N/A",
-                    "judgment": "N/A",
+                    "y_diff": y_diff_str,
+                    "judgment": judgment_str,
                     "time": f"{elapsed:.2f}s",
                     "results": results
                 }
@@ -643,8 +743,8 @@ class EvaluationTab:
                     os.path.basename(img_path),
                     str(num_objects),
                     classes_str if classes_str else "None",
-                    "N/A",
-                    "N/A",
+                    y_diff_str,
+                    judgment_str,
                     f"{elapsed:.2f}s"
                 ])
                 

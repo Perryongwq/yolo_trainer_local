@@ -1,6 +1,9 @@
 """Auto annotation tab for PyQt5"""
 import os
+import cv2
+import numpy as np
 from PyQt5.QtWidgets import QFileDialog, QMessageBox, QCheckBox, QWidget, QVBoxLayout, QTableWidgetItem
+from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtCore import Qt
 
 
@@ -87,6 +90,12 @@ class AnnotationTab:
         
         # Set initial confidence display
         self._on_confidence_changed(self.ui.slider_annotation_confidence.value())
+        
+        # Display SAM availability status
+        if self.sam_available:
+            self.logger.info("SAM is available. You can use 'YOLO+SAM Hybrid' mode for better boundaries.")
+        else:
+            self.logger.info("SAM not installed. Only 'YOLO Only' mode is available. To enable SAM: pip install segment-anything")
     
     def _browse_yolo_model(self):
         """Browse for YOLO model file"""
@@ -103,9 +112,30 @@ class AnnotationTab:
     
     def _browse_sam_model(self):
         """Browse for SAM model file"""
+        # Show help message if SAM is not available
+        if not self.sam_available:
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Information)
+            msg.setWindowTitle("SAM Installation Required")
+            msg.setText("Segment Anything Model (SAM) is not installed.")
+            msg.setInformativeText(
+                "To use SAM for better object boundaries:\n\n"
+                "1. Install SAM:\n"
+                "   pip install segment-anything\n\n"
+                "2. Download a SAM model checkpoint:\n"
+                "   • vit_h (~2.4GB) - Best quality\n"
+                "   • vit_l (~1.2GB) - Good balance\n"
+                "   • vit_b (~375MB) - Fastest\n\n"
+                "Download from:\n"
+                "https://github.com/facebookresearch/segment-anything#model-checkpoints\n\n"
+                "Model filename should contain 'vit_b', 'vit_l', or 'vit_h' to auto-detect type."
+            )
+            msg.exec_()
+            return
+        
         file_path, _ = QFileDialog.getOpenFileName(
             None,
-            "Select SAM Model",
+            "Select SAM Model (vit_b, vit_l, or vit_h)",
             "",
             "PyTorch Models (*.pth);;All files (*.*)"
         )
@@ -194,13 +224,37 @@ class AnnotationTab:
                     
                     if success:
                         self.sam_model_loaded = True
-                        self.logger.info(f"SAM model loaded: {os.path.basename(sam_path)}")
+                        device = self.annotation_manager.sam_device or "unknown"
+                        self.logger.info(f"SAM model loaded on {device.upper()}: {os.path.basename(sam_path)}")
+                        QMessageBox.information(None, "SAM Model Loaded", 
+                            f"SAM model loaded successfully on {device.upper()}!\n\n"
+                            f"You can now use 'YOLO+SAM Hybrid' mode for better object boundaries.")
                     else:
                         QMessageBox.critical(None, "Error", "Failed to load SAM model")
                         return False
                 except Exception as e:
                     QMessageBox.critical(None, "Error", f"Failed to load SAM model: {str(e)}")
                     return False
+        else:
+            # SAM not available - show installation instructions
+            if self.ui.lineEdit_sam_model.text():
+                msg = QMessageBox()
+                msg.setIcon(QMessageBox.Warning)
+                msg.setWindowTitle("SAM Not Available")
+                msg.setText("Segment Anything Model (SAM) is not installed.")
+                msg.setInformativeText(
+                    "To use SAM for better object boundaries:\n\n"
+                    "1. Install SAM:\n"
+                    "   pip install segment-anything\n\n"
+                    "2. Download a SAM model checkpoint:\n"
+                    "   • vit_h (~2.4GB) - Best quality\n"
+                    "   • vit_l (~1.2GB) - Good balance\n"
+                    "   • vit_b (~375MB) - Fastest\n\n"
+                    "Download from:\n"
+                    "https://github.com/facebookresearch/segment-anything#model-checkpoints"
+                )
+                msg.exec_()
+                return False
         
         return True
     
@@ -250,26 +304,31 @@ class AnnotationTab:
             checkbox.setChecked(False)
     
     def load_current_image(self):
-        """Load and display the current image"""
+        """Load and display the current image with annotations"""
         image_files = self.annotation_manager.image_files
         if not image_files or self.current_image_index < 0 or self.current_image_index >= len(image_files):
             return
         
         img_path = image_files[self.current_image_index]
         
-        # Load image to viewer (simplified - full implementation would use ImageViewer)
-        from PyQt5.QtGui import QPixmap
-        pixmap = QPixmap(img_path)
-        if not pixmap.isNull():
-            scaled_pixmap = pixmap.scaled(
-                self.ui.label_annotation_viewer.size(),
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
-            )
-            self.ui.label_annotation_viewer.setPixmap(scaled_pixmap)
-        
         # Get annotations for this image
         annotations = self.annotation_manager.get_annotations(img_path)
+        
+        # Draw annotated image if annotations exist
+        if annotations:
+            self._draw_annotated_image(img_path, annotations)
+        else:
+            # Load plain image if no annotations
+            pixmap = QPixmap(img_path)
+            if not pixmap.isNull():
+                # Scale to 50% of original size
+                scaled_pixmap = pixmap.scaled(
+                    pixmap.width() // 2,
+                    pixmap.height() // 2,
+                    Qt.KeepAspectRatio,
+                    Qt.SmoothTransformation
+                )
+                self.ui.label_annotation_viewer.setPixmap(scaled_pixmap)
         
         # Update annotation table
         self.update_annotation_table(img_path)
@@ -279,6 +338,78 @@ class AnnotationTab:
         index = self.current_image_index + 1
         total = len(image_files)
         self.logger.info(f"Image {index}/{total}: {filename}")
+    
+    def _draw_annotated_image(self, image_path, annotations):
+        """Draw bounding boxes on the image"""
+        # Read image with OpenCV
+        img = cv2.imread(image_path)
+        if img is None:
+            self.ui.label_annotation_viewer.setText("Failed to load image")
+            return
+        
+        # Convert BGR to RGB
+        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        h, w = img_rgb.shape[:2]
+        
+        # Draw bounding boxes for each annotation
+        for anno in annotations:
+            bbox = anno['bbox']  # [xmin, ymin, xmax, ymax] in pixel coordinates
+            class_id = anno['class_id']
+            confidence = anno.get('confidence', 1.0)
+            
+            # Get corner coordinates (already in pixel format)
+            x1 = int(bbox[0])
+            y1 = int(bbox[1])
+            x2 = int(bbox[2])
+            y2 = int(bbox[3])
+            
+            # Get class name
+            class_name = self.model_manager.get_class_name(class_id)
+            
+            # Draw bounding box
+            color = (0, 255, 0)  # Green in RGB
+            thickness = 2
+            cv2.rectangle(img_rgb, (x1, y1), (x2, y2), color, thickness)
+            
+            # Prepare label text
+            label_text = f"{class_name} {confidence:.2f}"
+            
+            # Calculate text size for background
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.7
+            font_thickness = 2
+            (text_width, text_height), baseline = cv2.getTextSize(
+                label_text, font, font_scale, font_thickness)
+            
+            # Draw background rectangle for text
+            cv2.rectangle(img_rgb, 
+                        (x1, y1 - text_height - baseline - 5),
+                        (x1 + text_width + 5, y1),
+                        color, -1)
+            
+            # Draw text
+            cv2.putText(img_rgb, label_text,
+                      (x1 + 2, y1 - baseline - 2),
+                      font, font_scale, (255, 255, 255), font_thickness)
+        
+        # Convert to QPixmap
+        height, width, channel = img_rgb.shape
+        bytes_per_line = 3 * width
+        q_image = QImage(img_rgb.data, width, height, bytes_per_line, QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(q_image)
+        
+        # Display at 50% size
+        if not pixmap.isNull():
+            # Scale image to 50% of original size
+            scaled_pixmap = pixmap.scaled(
+                pixmap.width() // 2, 
+                pixmap.height() // 2,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
+            self.ui.label_annotation_viewer.setPixmap(scaled_pixmap)
+        else:
+            self.ui.label_annotation_viewer.setText("Failed to create annotated image")
     
     def update_annotation_table(self, img_path):
         """Update the annotation table with annotations for the current image"""
@@ -492,5 +623,10 @@ class AnnotationTab:
         """Update model information"""
         self.ui.lineEdit_yolo_model.setText(model_path)
         self.update_class_checkboxes()
-        self.logger.info(f"Model loaded: {os.path.basename(model_path)}")
+        self.logger.info(f"YOLO model loaded: {os.path.basename(model_path)}")
+        
+        # Show SAM status if loaded
+        if self.sam_model_loaded and hasattr(self.annotation_manager, 'sam_device'):
+            device = self.annotation_manager.sam_device or "unknown"
+            self.logger.info(f"SAM ready on {device.upper()} - Hybrid mode available")
 
