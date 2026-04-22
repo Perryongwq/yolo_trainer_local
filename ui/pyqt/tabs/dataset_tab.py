@@ -1,23 +1,11 @@
 """Dataset configuration tab for PyQt5"""
 import os
 from PyQt5.QtWidgets import QFileDialog, QMessageBox, QLabel, QLineEdit, QHBoxLayout, QWidget, QPushButton, QDialog, QVBoxLayout, QComboBox, QFormLayout
-from PyQt5.QtCore import pyqtSignal, QEvent, QObject
+from PyQt5.QtCore import Qt
 import yaml
 
 from utils.event import Event
 from ui.pyqt.common.ui_utils import main_window_parent
-
-
-class _ClassEntryFocusTracker(QObject):
-    """Tracks which class entry line edit last had focus (for Delete Class when button is clicked)."""
-    def __init__(self, dataset_tab):
-        super().__init__()
-        self._tab = dataset_tab
-
-    def eventFilter(self, obj, event):
-        if event.type() == QEvent.FocusIn and isinstance(obj, QLineEdit) and obj.objectName().startswith("class_entry_"):
-            self._tab._last_focused_class_entry = obj
-        return False
 
 
 class DatasetTab:
@@ -35,8 +23,7 @@ class DatasetTab:
         self.ui = ui
         self.dataset_manager = dataset_manager
         self.logger = logger
-        self._last_focused_class_entry = None  # track which class box had focus (for Delete Class)
-        
+
         # Events
         self.on_dataset_changed = Event()
         
@@ -71,14 +58,21 @@ class DatasetTab:
         button_layout.setContentsMargins(0, 0, 0, 0)
         add_btn = QPushButton("Add Class")
         add_btn.clicked.connect(self.add_class)
-        delete_btn = QPushButton("Delete Class")
-        delete_btn.clicked.connect(self.delete_class)
+        new_yaml_btn = QPushButton("New YAML")
+        new_yaml_btn.clicked.connect(self.create_new_dataset)
+        save_as_btn = QPushButton("Save As")
+        save_as_btn.clicked.connect(self.save_yaml_as)
         button_layout.addWidget(add_btn)
-        button_layout.addWidget(delete_btn)
+        button_layout.addWidget(new_yaml_btn)
+        button_layout.addWidget(save_as_btn)
         button_layout.addStretch()
         button_layout.addWidget(self.ui.pushButton_save_yaml)
         self.ui.verticalLayout_3.insertWidget(2, self._class_buttons_row)
-        self._focus_tracker = _ClassEntryFocusTracker(self)
+
+        # Add extra quick-select dataset entries not present in the generated UI
+        for extra_yaml in ("config/21dataset.yaml", "config/31dataset.yaml", "config/32dataset.yaml"):
+            self._add_to_quick_select(extra_yaml)
+
         # Set initial YAML path if available
         yaml_path = self.dataset_manager.get_yaml_path()
         if yaml_path:
@@ -148,20 +142,8 @@ class DatasetTab:
             # Add new class entries in chronological order (class 0, 1, 2, ...)
             raw_names = dataset_content.get('names', [])
             classes = self._classes_in_chronological_order(raw_names)
-            for i, class_name in enumerate(classes):
-                class_widget = QWidget()
-                class_layout = QHBoxLayout(class_widget)
-                class_layout.setContentsMargins(0, 0, 0, 0)
-                
-                label = QLabel(f"Class {i}:")
-                entry = QLineEdit(class_name)
-                entry.setObjectName(f"class_entry_{i}")
-                entry.installEventFilter(self._focus_tracker)
-                
-                class_layout.addWidget(label)
-                class_layout.addWidget(entry)
-                
-                layout.addWidget(class_widget)
+            for class_name in classes:
+                self._add_class_row(class_name)
             
             # Spacer so class list stays at top
             layout.addStretch()
@@ -175,73 +157,77 @@ class DatasetTab:
             QMessageBox.critical(None, "Error", f"Failed to load YAML file: {str(e)}")
             self.logger.error(f"Error loading YAML: {str(e)}")
     
-    def add_class(self):
-        """Add a new class to the list"""
+    def _add_class_row(self, class_name=""):
+        """Add a single class row (label + text entry + ✕ button) to the classes layout."""
         layout = self.ui.verticalLayout_classes_content
-        
-        # Count current class entries
-        class_count = 0
-        for i in range(layout.count()):
-            widget = layout.itemAt(i).widget()
-            if widget and isinstance(widget, QWidget):
-                # Check if it has a LineEdit (class entry)
-                for child in widget.findChildren(QLineEdit):
-                    if child.objectName().startswith("class_entry_"):
-                        class_count += 1
-                        break
-        
-        # Remove the spacer temporarily (last item)
-        spacer_item = layout.takeAt(layout.count() - 1) if layout.count() else None
-        
-        # Add new class entry
-        class_widget = QWidget()
-        class_layout = QHBoxLayout(class_widget)
-        class_layout.setContentsMargins(0, 0, 0, 0)
-        
+
+        # Remove trailing spacer so new row is inserted before it
+        spacer_item = None
+        if layout.count() > 0:
+            last = layout.itemAt(layout.count() - 1)
+            if last and last.spacerItem():
+                spacer_item = layout.takeAt(layout.count() - 1)
+
+        # Count existing entries for index label
+        class_count = sum(
+            1 for i in range(layout.count())
+            if layout.itemAt(i).widget() and
+               layout.itemAt(i).widget().findChildren(QLineEdit) and
+               any(le.objectName().startswith("class_entry_")
+                   for le in layout.itemAt(i).widget().findChildren(QLineEdit))
+        )
+
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+
         label = QLabel(f"Class {class_count}:")
-        entry = QLineEdit()
+        label.setFixedWidth(65)
+        entry = QLineEdit(class_name)
         entry.setObjectName(f"class_entry_{class_count}")
-        entry.installEventFilter(self._focus_tracker)
-        
-        class_layout.addWidget(label)
-        class_layout.addWidget(entry)
-        
-        layout.addWidget(class_widget)
-        
-        # Restore the spacer
+
+        del_btn = QPushButton("✕")
+        del_btn.setFixedWidth(28)
+        del_btn.setToolTip("Delete this class")
+        del_btn.clicked.connect(lambda _checked, rw=row_widget: self._delete_class_row(rw))
+
+        row_layout.addWidget(label)
+        row_layout.addWidget(entry)
+        row_layout.addWidget(del_btn)
+
+        layout.addWidget(row_widget)
+
         if spacer_item:
             layout.addItem(spacer_item)
 
-    def delete_class(self):
-        """Remove the class row whose text box you were last in (cursor was idling there)."""
+        entry.setFocus()
+
+    def add_class(self):
+        """Add a new empty class row to the list."""
+        self._add_class_row()
+
+    def _delete_class_row(self, row_widget):
+        """Remove a specific class row and renumber the remaining rows."""
         layout = self.ui.verticalLayout_classes_content
-        if layout.count() <= 1:
+        # Require at least one class to remain
+        class_rows = [
+            layout.itemAt(i).widget() for i in range(layout.count())
+            if layout.itemAt(i).widget() and
+               any(le.objectName().startswith("class_entry_")
+                   for le in layout.itemAt(i).widget().findChildren(QLineEdit))
+        ]
+        if len(class_rows) <= 1:
+            QMessageBox.information(None, "Delete Class", "At least one class must remain.")
             return
-        entry = self._last_focused_class_entry
-        target_row = entry.parent() if entry else None
-        if not target_row or not isinstance(entry, QLineEdit) or not entry.objectName().startswith("class_entry_"):
-            QMessageBox.information(
-                None,
-                "Delete Class",
-                "Click in the class name field you want to delete, then press Delete Class.",
-            )
-            return
-        index_to_remove = -1
-        for i in range(layout.count() - 1):
+        for i in range(layout.count()):
             item = layout.itemAt(i)
-            if item and item.widget() is target_row:
-                index_to_remove = i
+            if item and item.widget() is row_widget:
+                layout.takeAt(i)
+                row_widget.setParent(None)
+                row_widget.deleteLater()
                 break
-        if index_to_remove < 0:
-            return
-        item = layout.takeAt(index_to_remove)
-        row_widget = item.widget()
-        if row_widget:
-            row_widget.setParent(None)
-            row_widget.deleteLater()
-        self._last_focused_class_entry = None
         self._renumber_class_labels()
-        self.logger.info("Removed selected class from list")
+        self.logger.info("Removed class row")
 
     def _renumber_class_labels(self):
         """Renumber Class 0, Class 1, ... and objectNames after a delete."""
@@ -307,87 +293,125 @@ class DatasetTab:
             self.logger.error(f"Error saving YAML: {str(e)}")
     
     def create_new_dataset(self):
-        """Create a new YAML dataset file"""
-        file_path, _ = QFileDialog.getSaveFileName(
-            main_window_parent(self.logger),
-            "Create New Dataset YAML",
-            "",
-            "YAML files (*.yaml);;All files (*.*)"
-        )
-        
-        if not file_path:
-            return
-        
-        # Create dataset structure dialog
-        dialog = QDialog()
-        dialog.setWindowTitle("Create Dataset")
-        dialog.resize(400, 300)
-        
+        """Create a new YAML dataset file from scratch"""
+        from PyQt5.QtWidgets import QTextEdit, QDialogButtonBox
+
+        # --- step 1: collect details via dialog ---
+        dialog = QDialog(main_window_parent(self.logger))
+        dialog.setWindowTitle("New Dataset YAML")
+        dialog.resize(420, 320)
+
         layout = QVBoxLayout(dialog)
-        
-        # Form layout for inputs
         form_layout = QFormLayout()
-        
-        # Dataset path
-        path_entry = QLineEdit("./datasets/custom")
-        form_layout.addRow("Dataset Path:", path_entry)
-        
-        # Dataset format
-        format_combo = QComboBox()
-        format_combo.addItems(["YOLOv8", "YOLOv11"])
-        form_layout.addRow("Dataset Format:", format_combo)
-        
+
+        path_entry = QLineEdit()
+        path_entry.setPlaceholderText("e.g. C:/Common/CT600 Image Data/MyDataset")
+        browse_btn = QPushButton("Browse…")
+        path_row = QWidget()
+        path_row_layout = QHBoxLayout(path_row)
+        path_row_layout.setContentsMargins(0, 0, 0, 0)
+        path_row_layout.addWidget(path_entry)
+        path_row_layout.addWidget(browse_btn)
+        browse_btn.clicked.connect(
+            lambda: path_entry.setText(
+                QFileDialog.getExistingDirectory(dialog, "Select Dataset Root Folder") or path_entry.text()
+            )
+        )
+        form_layout.addRow("Dataset path:", path_row)
         layout.addLayout(form_layout)
-        
-        # Classes input area
-        classes_label = QLabel("Classes (one per line):")
-        layout.addWidget(classes_label)
-        
-        from PyQt5.QtWidgets import QTextEdit
+
+        layout.addWidget(QLabel("Class names (one per line):"))
         classes_text = QTextEdit()
-        classes_text.setPlaceholderText("Enter class names, one per line\nExample:\nclass1\nclass2\nclass3")
+        classes_text.setPlaceholderText("block1\nblock1_edge\nblock2\nblock2_edge\ncal_mark")
         layout.addWidget(classes_text)
-        
-        # Buttons
-        from PyQt5.QtWidgets import QDialogButtonBox
+
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         button_box.accepted.connect(dialog.accept)
         button_box.rejected.connect(dialog.reject)
         layout.addWidget(button_box)
-        
-        if dialog.exec_() == QDialog.Accepted:
-            # Get class names
-            classes_str = classes_text.toPlainText()
-            classes = [line.strip() for line in classes_str.split('\n') if line.strip()]
-            
-            if not classes:
-                QMessageBox.critical(None, "Error", "At least one class is required")
-                return
-            
-            # Create YAML content
-            content = {
-                'path': path_entry.text(),
-                'train': 'images/train',
-                'val': 'images/val',
-                'test': 'images/test',
-                'names': classes
-            }
-            
-            # Add YOLOv11 specific settings if selected
-            if format_combo.currentText() == "YOLOv11":
-                content['format_version'] = 11
-                content['advanced_augmentation'] = True
-            
-            try:
-                # Save the YAML file
-                self.dataset_manager.save_yaml(file_path, content)
-                
-                QMessageBox.information(None, "Success", f"Dataset YAML created: {file_path}")
-                
-                # Update the UI
-                self.ui.lineEdit_yaml_path.setText(file_path)
-                self.load_yaml()
-                
-            except Exception as e:
-                QMessageBox.critical(None, "Error", f"Failed to create YAML file: {str(e)}")
+
+        if dialog.exec_() != QDialog.Accepted:
+            return
+
+        classes = [line.strip() for line in classes_text.toPlainText().splitlines() if line.strip()]
+        if not classes:
+            QMessageBox.critical(None, "Error", "At least one class name is required.")
+            return
+
+        # --- step 2: choose save location ---
+        save_path, _ = QFileDialog.getSaveFileName(
+            main_window_parent(self.logger),
+            "Save New Dataset YAML",
+            "config/",
+            "YAML files (*.yaml);;All files (*.*)"
+        )
+        if not save_path:
+            return
+
+        content = {
+            'path': path_entry.text(),
+            'train': 'train/images',
+            'val': 'val/images',
+            'nc': len(classes),
+            'names': classes,
+        }
+
+        try:
+            self.dataset_manager.save_yaml(save_path, content)
+            self._add_to_quick_select(save_path)
+            self.ui.lineEdit_yaml_path.setText(save_path)
+            self.load_yaml()
+            QMessageBox.information(None, "Success", f"Dataset YAML created:\n{save_path}")
+            self.logger.info(f"Created new dataset YAML: {save_path}")
+        except Exception as e:
+            QMessageBox.critical(None, "Error", f"Failed to create YAML file: {str(e)}")
+            self.logger.error(f"Error creating YAML: {str(e)}")
+
+    def save_yaml_as(self):
+        """Save current dataset configuration to a new file location"""
+        current_path = self.ui.lineEdit_yaml_path.text()
+        save_path, _ = QFileDialog.getSaveFileName(
+            main_window_parent(self.logger),
+            "Save Dataset YAML As",
+            current_path or "config/",
+            "YAML files (*.yaml);;All files (*.*)"
+        )
+        if not save_path:
+            return
+
+        # Build content from current UI state
+        classes = []
+        layout = self.ui.verticalLayout_classes_content
+        for i in range(layout.count()):
+            widget = layout.itemAt(i).widget()
+            if widget:
+                for line_edit in widget.findChildren(QLineEdit):
+                    if line_edit.objectName().startswith("class_entry_"):
+                        text = line_edit.text().strip()
+                        if text:
+                            classes.append(text)
+
+        dataset_content = self.dataset_manager.get_dataset_content() or {}
+        content = {
+            'path': self.ui.lineEdit_dataset_path.text(),
+            'train': dataset_content.get('train', 'train/images'),
+            'val': dataset_content.get('val', 'val/images'),
+            'nc': len(classes),
+            'names': classes,
+        }
+
+        try:
+            self.dataset_manager.save_yaml(save_path, content)
+            self._add_to_quick_select(save_path)
+            self.ui.lineEdit_yaml_path.setText(save_path)
+            QMessageBox.information(None, "Success", f"Saved to:\n{save_path}")
+            self.logger.info(f"Saved dataset YAML as: {save_path}")
+        except Exception as e:
+            QMessageBox.critical(None, "Error", f"Failed to save YAML: {str(e)}")
+            self.logger.error(f"Error saving YAML as: {str(e)}")
+
+    def _add_to_quick_select(self, yaml_path):
+        """Add a YAML path to the quick-select combobox if not already present"""
+        if self.ui.comboBox_quick_select.findText(yaml_path) == -1:
+            self.ui.comboBox_quick_select.addItem(yaml_path)
 

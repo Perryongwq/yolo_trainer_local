@@ -1,4 +1,4 @@
-path: C:/Common/MES CT600 Program/CT600 Model Training/03item/03item/03ItemDataset
+path: C:/Common/CT600 Image Data/03 item Dataset
 train: train/images
 val: val/images
 nc: 5

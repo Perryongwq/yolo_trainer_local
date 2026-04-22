@@ -1,4 +1,4 @@
-path: C:/Common/CT600 Image Data/18 item Dataset
+path: C:/Common/CT600 Image Data/32 item Dataset
 train: train/images
 val: val/images
 nc: 5

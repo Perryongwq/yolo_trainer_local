@@ -1,4 +1,4 @@
-path: C:/Users/mes0009c/Desktop/Coding/CT600/pyqt5-yolo-trainer/dataset
+path: C:/Common/CT600 Image Data/15 item Dataset
 train: train/images
 val: val/images
 nc: 5
