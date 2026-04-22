@@ -3,24 +3,19 @@ import os
 from PyQt5.QtWidgets import QMainWindow
 
 # Import generated UI
-from ui_new_mainwindow import Ui_MainWindow
+from config.ui_mainwindow import Ui_MainWindow
 
 # Import core managers
-from core.config_manager import ConfigManager
-from core.model_manager import ModelManager
-from core.training_manager import TrainingManager
-from core.dataset_manager import DatasetManager
-from core.annotation_manager import AnnotationManager
+from core import (
+    ConfigManager, ModelManager, TrainingManager,
+    DatasetManager, AnnotationManager,
+)
 
 # Import utilities
-from utils.logging_utils import Logger
+from utils import Logger
 
 # Import PyQt5 tabs
-from ui.pyqt.tabs.dataset_tab import DatasetTab
-from ui.pyqt.tabs.training_tab import TrainingTab
-from ui.pyqt.tabs.status_tab import StatusTab
-from ui.pyqt.tabs.evaluation_tab import EvaluationTab
-from ui.pyqt.tabs.annotation_tab import AnnotationTab
+from ui.pyqt.tabs import DatasetTab, TrainingTab, EvaluationTab, AnnotationTab, ImageCleaningTab, DatasetPrepTab
 
 
 class YOLOTrainerApp(QMainWindow):
@@ -61,11 +56,6 @@ class YOLOTrainerApp(QMainWindow):
             self.logger
         )
         
-        self.status_tab = StatusTab(
-            self.ui,
-            self.logger
-        )
-        
         self.evaluation_tab = EvaluationTab(
             self.ui,
             self.model_manager,
@@ -78,6 +68,9 @@ class YOLOTrainerApp(QMainWindow):
             self.annotation_manager,
             self.logger
         )
+        
+        self.image_cleaning_tab = ImageCleaningTab(self.ui, self.logger)
+        self.dataset_prep_tab = DatasetPrepTab(self.ui, self.logger)
         
         # Register event listeners
         self._register_events()
@@ -97,19 +90,19 @@ class YOLOTrainerApp(QMainWindow):
         self.model_manager.on_model_loaded.subscribe(self.evaluation_tab.update_model_info)
         self.model_manager.on_model_loaded.subscribe(self.annotation_tab.update_model_info)
         
-        # Training events
-        self.training_manager.on_training_started.subscribe(self.status_tab.on_training_started)
-        self.training_manager.on_training_progress.subscribe(self.status_tab.on_training_progress)
-        self.training_manager.on_training_completed.subscribe(self.status_tab.on_training_completed)
-        self.training_manager.on_training_error.subscribe(self.status_tab.on_training_error)
+        # Training events (handled by training_tab which now includes status)
+        self.training_manager.on_training_started.subscribe(self.training_tab.on_training_started)
+        self.training_manager.on_training_progress.subscribe(self.training_tab.on_training_progress)
+        self.training_manager.on_training_completed.subscribe(self.training_tab.on_training_completed)
+        self.training_manager.on_training_error.subscribe(self.training_tab.on_training_error)
         
         # Button callbacks
         self.training_tab.on_start_training.subscribe(self.start_training)
     
     def start_training(self):
         """Start the training process"""
-        # Switch to status tab
-        self.ui.tabWidget.setCurrentWidget(self.ui.tab_status)
+        # Stay on training tab (parameters + status are now on same page)
+        self.ui.tabWidget.setCurrentWidget(self.ui.tab_training)
         
         # Start training with current configuration
         self.training_manager.start_training(

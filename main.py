@@ -3,7 +3,8 @@ import multiprocessing
 import sys
 import os
 from PyQt5.QtWidgets import QApplication
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QFont
+from PyQt5.QtCore import Qt
 
 from ui.pyqt.app import YOLOTrainerApp
 
@@ -27,6 +28,15 @@ def main():
     # Create the PyQt5 application
     app = QApplication(sys.argv)
     app.setApplicationName("YOLO Training GUI")
+
+    # Scale font size to screen resolution
+    screen = app.primaryScreen().availableGeometry()
+    base_height = 1080  # reference resolution
+    scale = screen.height() / base_height
+    default_font = app.font()
+    scaled_size = max(8, int(default_font.pointSize() * scale))
+    default_font.setPointSize(scaled_size)
+    app.setFont(default_font)
     
     # Set application icon
     try:

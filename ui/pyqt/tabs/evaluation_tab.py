@@ -7,6 +7,12 @@ from PyQt5.QtWidgets import QFileDialog, QMessageBox, QTableWidgetItem, QSplitte
 from PyQt5.QtGui import QPixmap, QImage
 from PyQt5.QtCore import Qt, pyqtSignal, QObject
 
+from ui.pyqt.common.ui_utils import main_window_parent
+from core.measurement_engine import MeasurementEngine
+from utils.image_rendering import (
+    draw_edge_measurements, cv_to_pixmap, load_pixmap_scaled,
+)
+
 
 class EvaluationSignals(QObject):
     """Signals for thread-safe UI updates"""
@@ -38,13 +44,19 @@ class EvaluationTab:
         # Variables
         self.current_image_path = None
         self.batch_results = []
+        # Track last-shown batch preview so Show Labels/Confidence/Measurements can refresh it
+        self._last_batch_preview_path = None
+        self._last_batch_preview_results = None
         
-        # Measurement constants (matching app_fastapi.py)
-        self.MICRONS_PER_PIXEL = 2.3
-        self.BLOCK1_OFFSET = 0.0
-        self.BLOCK2_OFFSET = 0.0
-        self.MEASUREMENT_OFFSET_MICRONS = 0.0  # Offset to apply to final measurement
-        self.judgment_criteria = {"good": 10, "acceptable": 20}
+        # Measurement engine (reusable across tabs / CLI / API)
+        self.measurement = MeasurementEngine()
+        
+        # Expose constants as properties for backward compatibility
+        self.MICRONS_PER_PIXEL = self.measurement.microns_per_pixel
+        self.BLOCK1_OFFSET = self.measurement.block1_offset
+        self.BLOCK2_OFFSET = self.measurement.block2_offset
+        self.MEASUREMENT_OFFSET_MICRONS = self.measurement.measurement_offset_microns
+        self.judgment_criteria = self.measurement.judgment_criteria
         
         # Connect UI signals to handlers
         self._connect_signals()
@@ -73,9 +85,11 @@ class EvaluationTab:
         self.ui.checkBox_show_conf.stateChanged.connect(self.update_display_options)
         self.ui.checkBox_show_measurements.stateChanged.connect(self.update_display_options)
         
-        # Single image tab
-        self.ui.pushButton_image_browse.clicked.connect(self._browse_image)
-        self.ui.pushButton_evaluate_image.clicked.connect(self.evaluate_single_image)
+        # Single image tab (removed from UI; connections skipped if widgets absent)
+        if hasattr(self.ui, "pushButton_image_browse"):
+            self.ui.pushButton_image_browse.clicked.connect(self._browse_image)
+        if hasattr(self.ui, "pushButton_evaluate_image"):
+            self.ui.pushButton_evaluate_image.clicked.connect(self.evaluate_single_image)
         
         # Batch tab
         self.ui.pushButton_batch_browse.clicked.connect(self._browse_batch_folder)
@@ -165,7 +179,7 @@ class EvaluationTab:
     def _browse_model(self):
         """Browse for model file"""
         file_path, _ = QFileDialog.getOpenFileName(
-            None,
+            main_window_parent(self.logger),
             "Select Model File",
             "",
             "PyTorch Models (*.pt);;All files (*.*)"
@@ -178,7 +192,7 @@ class EvaluationTab:
     def _browse_image(self):
         """Browse for image file"""
         file_path, _ = QFileDialog.getOpenFileName(
-            None,
+            main_window_parent(self.logger),
             "Select Image",
             "",
             "Image files (*.jpg *.jpeg *.png *.bmp *.gif);;All files (*.*)"
@@ -193,7 +207,7 @@ class EvaluationTab:
     def _browse_batch_folder(self):
         """Browse for batch folder"""
         folder_path = QFileDialog.getExistingDirectory(
-            None,
+            main_window_parent(self.logger),
             "Select Images Folder"
         )
         
@@ -207,348 +221,64 @@ class EvaluationTab:
     
     def _load_image_to_viewer(self, image_path, label_widget):
         """Load image to a QLabel widget (scrollable) at 50% size"""
-        pixmap = QPixmap(image_path)
-        if not pixmap.isNull():
-            # Scale image to 50% of original size
-            scaled_pixmap = pixmap.scaled(
-                pixmap.width() // 2, 
-                pixmap.height() // 2,
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
-            )
+        scaled_pixmap = load_pixmap_scaled(image_path, scale=0.5)
+        if scaled_pixmap:
             label_widget.setPixmap(scaled_pixmap)
-            # Resize label to scaled pixmap size to enable scrolling
             label_widget.resize(scaled_pixmap.size())
         else:
             label_widget.setText("Failed to load image")
     
     def _calculate_measurements(self, results):
         """
-        Calculate Y-difference and judgment from detection results
+        Calculate Y-difference and judgment from detection results.
         
-        Args:
-            results: YOLO inference results
-            
+        Delegates to :class:`MeasurementEngine` for the actual calculation.
+        
         Returns:
-            tuple: (y_diff_microns, judgment, microns_per_pixel) or (None, None, None) if edges not found
+            tuple: (y_diff_microns, judgment, microns_per_pixel)
         """
-        if not hasattr(results.boxes, 'xyxy') or len(results.boxes.xyxy) == 0:
-            return None, None, None
-        
-        boxes = results.boxes.xyxy.cpu().numpy()
-        classes = results.boxes.cls.cpu().numpy()
-        boxes_xywh = results.boxes.xywh.cpu().numpy()
-        
-        block1_edge_y = None
-        block2_edge_y = None
-        calibration_marker_width_px = None
-        microns_per_pixel = self.MICRONS_PER_PIXEL  # Default fallback
-        
-        # First pass: Find calibration marker to calculate microns_per_pixel
-        for i, (box, box_xywh, cls) in enumerate(zip(boxes, boxes_xywh, classes)):
-            x_center, y_center, width_box, height_box = box_xywh
-            class_name = self.model_manager.get_class_name(int(cls))
-            width = width_box
-            
-            if class_name == "cal_mark":
-                if hasattr(width, 'item'):
-                    calibration_marker_width_px = width.item()
-                else:
-                    calibration_marker_width_px = float(width)
-                break  # Found calibration marker
-        
-        # Calculate microns per pixel from calibration marker if detected
-        if calibration_marker_width_px:
-            microns_per_pixel = 1000.0 / calibration_marker_width_px
-            self.logger.info(f"Using calibration from image: {microns_per_pixel:.2f} um/pixel")
-        else:
-            self.logger.warning(f"No cal_mark detected, using default: {microns_per_pixel:.2f} um/pixel")
-        
-        # Second pass: Calculate edge positions using calibrated microns_per_pixel
-        for i, (box, box_xywh, cls) in enumerate(zip(boxes, boxes_xywh, classes)):
-            x_center, y_center, width_box, height_box = box_xywh
-            class_name = self.model_manager.get_class_name(int(cls))
-            
-            y_center = int(y_center)
-            height = int(height_box)
-            
-            if class_name == "block1_edge" or class_name == "block1_edge15":
-                edge_y = int(y_center + height / 2)
-                block1_edge_y = edge_y + (self.BLOCK1_OFFSET / microns_per_pixel)
-            elif class_name == "block2_edge" or class_name == "block2_edge15":
-                edge_y = int(y_center + height / 2)
-                block2_edge_y = edge_y + (self.BLOCK2_OFFSET / microns_per_pixel)
-        
-        # Calculate Y-difference if both edges detected
-        if block1_edge_y is not None and block2_edge_y is not None:
-            y_diff_pixels = block1_edge_y - block2_edge_y
-            y_diff_microns = (y_diff_pixels * microns_per_pixel) + self.MEASUREMENT_OFFSET_MICRONS
-            
-            # Determine judgment based on signed difference
-            if y_diff_microns < self.judgment_criteria["good"]:
-                judgment = "Good"
-            elif y_diff_microns < self.judgment_criteria["acceptable"]:
-                judgment = "Acceptable"
-            else:
-                judgment = "No Good"
-            
-            return y_diff_microns, judgment, microns_per_pixel
-        
-        return None, None, microns_per_pixel
+        m = self.measurement.calculate_from_results(results, self.model_manager.get_class_name)
+        return m["y_diff_microns"], m["judgment"], m["microns_per_pixel"]
     
     def _draw_annotated_image(self, image_path, results, label_widget):
-        """Draw annotated image with detection results"""
-        from PyQt5.QtGui import QPainter, QPen, QFont, QColor
-        from datetime import datetime
-        
-        # Read image with OpenCV
+        """Draw annotated image with detection results using shared rendering."""
         img = cv2.imread(image_path)
         if img is None:
             label_widget.setText("Failed to load image")
             return
-        
-        # Convert BGR to RGB
+
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        h, w = img_rgb.shape[:2]
-        
-        # Get display options
+
         show_labels = self.ui.checkBox_show_labels.isChecked()
         show_conf = self.ui.checkBox_show_conf.isChecked()
         show_measurements = self.ui.checkBox_show_measurements.isChecked()
-        
-        # Variables for edge detection and calibration
-        block1_edge_y = None
-        block2_edge_y = None
-        calibration_marker_width_px = None
-        microns_per_pixel = self.MICRONS_PER_PIXEL
-        
-        # Draw bounding boxes and labels
-        if hasattr(results.boxes, 'xyxy') and len(results.boxes.xyxy) > 0:
-            boxes = results.boxes.xyxy.cpu().numpy()
+
+        if hasattr(results.boxes, "xyxy") and len(results.boxes.xyxy) > 0:
+            boxes_xyxy = results.boxes.xyxy.cpu().numpy()
+            boxes_xywh = results.boxes.xywh.cpu().numpy()
             classes = results.boxes.cls.cpu().numpy()
             confidences = results.boxes.conf.cpu().numpy()
-            
-            # Get xywh format for center calculations
-            boxes_xywh = results.boxes.xywh.cpu().numpy()
-            
-            # First pass: Find calibration marker to calculate microns_per_pixel BEFORE drawing
-            for i, (box, box_xywh, cls, conf) in enumerate(zip(boxes, boxes_xywh, classes, confidences)):
-                x_center, y_center, width_box, height_box = box_xywh
-                class_name = self.model_manager.get_class_name(int(cls))
-                width = width_box
-                
-                if class_name == "cal_mark":
-                    # Store calibration marker width
-                    if hasattr(width, 'item'):
-                        calibration_marker_width_px = width.item()
-                    else:
-                        calibration_marker_width_px = float(width)
-                    break  # Found calibration marker
-            
-            # Calculate microns per pixel from calibration marker if detected
-            if calibration_marker_width_px:
-                microns_per_pixel = 1000.0 / calibration_marker_width_px
-                self.logger.info(f"Calibration: cal_mark width = {calibration_marker_width_px:.2f}px, "
-                               f"microns/px = {microns_per_pixel:.2f}")
-                
-                # Check if microns per pixel is too high
-                if microns_per_pixel > 10:
-                    self.logger.warning("Microns per pixel too high, suggesting focus adjustment")
-            else:
-                self.logger.warning(f"cal_mark not detected, using default: {microns_per_pixel:.2f} um/pixel")
-            
-            # Second pass: Draw all detections with calibrated microns_per_pixel
-            for i, (box, box_xywh, cls, conf) in enumerate(zip(boxes, boxes_xywh, classes, confidences)):
-                x1, y1, x2, y2 = map(int, box)
-                x_center, y_center, width_box, height_box = box_xywh
-                class_name = self.model_manager.get_class_name(int(cls))
-                
-                # Calculate center and edge position
-                x_center = int(x_center)
-                y_center = int(y_center)
-                height = int(height_box)
-                width = width_box
-                
-                # Check for specific classes (matching app_fastapi.py)
-                if class_name == "block1_edge" or class_name == "block1_edge15":
-                    # Calculate edge position (bottom of detection box)
-                    edge_y = int(y_center + height / 2)
-                    # Apply offset and store edge position (matching app_fastapi.py)
-                    block1_edge_y = edge_y + (self.BLOCK1_OFFSET / microns_per_pixel)
-                    # Draw longer line from x_center - 300 to x_center + 300 (increased from 150)
-                    cv2.line(img_rgb, 
-                            (int(x_center - 300), edge_y),
-                            (int(x_center + 300), edge_y),
-                            (255, 0, 0),  # Red in RGB (matching app_fastapi.py)
-                            2)
-                    label_y_pos = edge_y
-                    color = (255, 0, 0)
-                    is_edge_class = True
-                elif class_name == "block2_edge" or class_name == "block2_edge15":
-                    # Calculate edge position (bottom of detection box)
-                    edge_y = int(y_center + height / 2)
-                    # Apply offset and store edge position (matching app_fastapi.py)
-                    block2_edge_y = edge_y + (self.BLOCK2_OFFSET / microns_per_pixel)
-                    # Draw longer line from x_center - 300 to x_center + 300 (increased from 150)
-                    cv2.line(img_rgb,
-                            (int(x_center - 300), edge_y),
-                            (int(x_center + 300), edge_y),
-                            (0, 255, 255),  # Cyan in RGB (matching app_fastapi.py)
-                            2)
-                    label_y_pos = edge_y
-                    color = (0, 255, 255)
-                    is_edge_class = True
-                elif class_name == "cal_mark":
-                    # Store calibration marker width (matching app_fastapi.py)
-                    # Convert to scalar if it's a numpy array/tensor
-                    if hasattr(width, 'item'):
-                        calibration_marker_width_px = width.item()
-                    else:
-                        calibration_marker_width_px = float(width)
-                    # Don't draw calibration marker, just store its value
-                    continue
-                elif class_name in ["block1", "block1_15", "block2", "block2_15"]:
-                    # Track block positions but don't draw special lines
-                    block_y = int(y_center + height / 2)
-                    # Regular bounding box
-                    color = (0, 255, 0)  # Green in RGB
-                    thickness = 2
-                    cv2.rectangle(img_rgb, (x1, y1), (x2, y2), color, thickness)
-                    label_y_pos = y1
-                    is_edge_class = False
-                else:
-                    # Regular bounding box for other classes
-                    color = (0, 255, 0)  # Green in RGB
-                    thickness = 2
-                    cv2.rectangle(img_rgb, (x1, y1), (x2, y2), color, thickness)
-                    label_y_pos = y1
-                    is_edge_class = False
-                
-                # Prepare label text
-                label_parts = []
-                if show_labels:
-                    label_parts.append(class_name)
-                if show_conf:
-                    label_parts.append(f"{conf:.2f}")
-                
-                if label_parts:
-                    label_text = " ".join(label_parts)
-                    
-                    # Calculate text size for background
-                    font = cv2.FONT_HERSHEY_SIMPLEX
-                    font_scale = 0.9  # Increased from 0.6 for better visibility
-                    font_thickness = 2
-                    (text_width, text_height), baseline = cv2.getTextSize(
-                        label_text, font, font_scale, font_thickness)
-                    
-                    # Position label based on detection type
-                    if is_edge_class:
-                        # For edge classes, position label to the right of the longer line
-                        label_x = x_center + 300
-                        label_y = label_y_pos
-                    else:
-                        # For regular boxes, position at top
-                        label_x = x1
-                        label_y = label_y_pos
-                    
-                    # Draw background rectangle for text
-                    cv2.rectangle(img_rgb, 
-                                (label_x, label_y - text_height - baseline - 5),
-                                (label_x + text_width + 5, label_y),
-                                color, -1)
-                    
-                    # Draw text
-                    cv2.putText(img_rgb, label_text,
-                              (label_x + 2, label_y - baseline - 2),
-                              font, font_scale, (255, 255, 255), font_thickness)
-                
-                # Add measurements if enabled
-                if show_measurements:
-                    if is_edge_class:
-                        # For edge classes, show edge position (Y coordinate)
-                        meas_text = f"Edge Y: {label_y_pos}px"
-                        meas_x = x_center - 80
-                        meas_y = label_y_pos + 25
-                    else:
-                        # Regular measurements for bounding boxes
-                        width_px = x2 - x1
-                        height_px = y2 - y1
-                        
-                        # Convert to microns using calibrated value
-                        width_microns = width_px * microns_per_pixel
-                        height_microns = height_px * microns_per_pixel
-                        
-                        meas_text = f"W:{width_microns:.1f}μm H:{height_microns:.1f}μm"
-                        meas_x = x1
-                        meas_y = y2 + 20
-                    
-                    # Draw measurement text
-                    cv2.putText(img_rgb, meas_text,
-                              (meas_x, meas_y),
-                              cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-            
-            # Display microns per pixel on image (top left)
-            cal_text = f"{microns_per_pixel:.2f} um/pixel"
-            cv2.putText(img_rgb, cal_text, (10, 30),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-            
-            # Calculate and display Y-difference if both edges detected
-            if block1_edge_y is not None and block2_edge_y is not None:
-                # Signed difference: block1_edge - block2_edge (matching FastAPI)
-                y_diff_pixels = block1_edge_y - block2_edge_y
-                y_diff_microns = (y_diff_pixels * microns_per_pixel) + self.MEASUREMENT_OFFSET_MICRONS
-                
-                # Determine judgment based on signed difference (matching FastAPI logic)
-                if y_diff_microns < self.judgment_criteria["good"]:
-                    judgment = "Good"
-                    judgment_color = (0, 255, 0)  # Green
-                elif y_diff_microns < self.judgment_criteria["acceptable"]:
-                    judgment = "Acceptable"
-                    judgment_color = (0, 165, 255)  # Orange
-                else:
-                    judgment = "No Good"
-                    judgment_color = (0, 0, 255)  # Red
-                
-                # Calculate position for text (between the two edges)
-                text_x = w // 2 + 250
-                text_y = int((block1_edge_y + block2_edge_y) / 2)
-                
-                # Draw Y-difference measurement first (at top)
-                diff_text = f"{y_diff_microns:.2f} microns"
-                cv2.putText(img_rgb, diff_text,
-                           (text_x - 100, text_y),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-                
-                # Draw judgment text below Y-difference
-                judgment_text = f"Judgment: {judgment}"
-                cv2.putText(img_rgb, judgment_text,
-                           (text_x - 100, text_y + 40),
-                           cv2.FONT_HERSHEY_SIMPLEX, 1.0, judgment_color, 2)
-                
-                # Draw timestamp
-                current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                cv2.putText(img_rgb, f"Checked on: {current_datetime}",
-                           (10, h - 10),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 3)
-        
-        # Convert to QPixmap
-        height, width, channel = img_rgb.shape
-        bytes_per_line = 3 * width
-        q_image = QImage(img_rgb.data, width, height, bytes_per_line, QImage.Format_RGB888)
-        pixmap = QPixmap.fromImage(q_image)
-        
-        # Display at 50% size to enable better viewing
-        if not pixmap.isNull():
-            # Scale image to 50% of original size
-            scaled_pixmap = pixmap.scaled(
-                pixmap.width() // 2, 
-                pixmap.height() // 2,
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
+
+            m = self.measurement.calculate(
+                boxes_xyxy, boxes_xywh, classes, self.model_manager.get_class_name
             )
-            label_widget.setPixmap(scaled_pixmap)
-            # Resize label to scaled pixmap size to enable scrolling
-            label_widget.resize(scaled_pixmap.size())
+
+            draw_edge_measurements(
+                img_rgb, boxes_xyxy, boxes_xywh, classes, confidences,
+                self.model_manager.get_class_name, m,
+                show_labels=show_labels, show_conf=show_conf,
+                show_measurements=show_measurements,
+                microns_per_pixel=self.MICRONS_PER_PIXEL,
+            )
+
+        pixmap = cv_to_pixmap(img_rgb)
+        if not pixmap.isNull():
+            scaled = pixmap.scaled(
+                pixmap.width() // 2, pixmap.height() // 2,
+                Qt.KeepAspectRatio, Qt.SmoothTransformation,
+            )
+            label_widget.setPixmap(scaled)
+            label_widget.resize(scaled.size())
         else:
             label_widget.setText("Failed to create annotated image")
     
@@ -572,21 +302,31 @@ class EvaluationTab:
         self.logger.info(f"Model loaded: {os.path.basename(model_path)}")
     
     def update_display_options(self):
-        """Update display options and refresh the current display"""
-        # If we have a current image with results, redraw it
-        if self.current_image_path and self.model_manager.model:
-            try:
-                # Get confidence threshold
+        """Update display options and refresh the current display (batch preview or single image)."""
+        try:
+            # Refresh batch preview if one was last shown (uses current Show Labels / Confidence / Measurements)
+            if self._last_batch_preview_path and self._last_batch_preview_results is not None:
+                self._draw_annotated_image(
+                    self._last_batch_preview_path,
+                    self._last_batch_preview_results,
+                    self.ui.label_batch_image_viewer,
+                )
+            # If we have a single-image path and viewer (e.g. legacy Single Image tab), redraw it
+            if (
+                self.current_image_path
+                and self.model_manager.model
+                and hasattr(self.ui, "label_image_viewer")
+            ):
                 confidence = self.ui.slider_confidence.value() / 100.0
-                
-                # Re-run inference to get results
-                results = self.model_manager.run_inference(self.current_image_path, confidence=confidence)
-                
-                if results and len(results) > 0 and hasattr(results[0].boxes, 'cls'):
-                    # Redraw with updated options
-                    self._draw_annotated_image(self.current_image_path, results[0], self.ui.label_image_viewer)
-            except Exception as e:
-                self.logger.error(f"Error updating display: {str(e)}")
+                results = self.model_manager.run_inference(
+                    self.current_image_path, confidence=confidence
+                )
+                if results and len(results) > 0 and hasattr(results[0].boxes, "cls"):
+                    self._draw_annotated_image(
+                        self.current_image_path, results[0], self.ui.label_image_viewer
+                    )
+        except Exception as e:
+            self.logger.error(f"Error updating display: {str(e)}")
     
     def evaluate_single_image(self):
         """Run inference on a single image"""
@@ -671,10 +411,12 @@ class EvaluationTab:
             QMessageBox.critical(None, "Error", "No image files found in the selected folder")
             return
         
-        # Clear previous results
+        # Clear previous results and stored preview (so display options only refresh after a new double-click)
         self.ui.tableWidget_batch_results.setRowCount(0)
         self.batch_results = []
-        
+        self._last_batch_preview_path = None
+        self._last_batch_preview_results = None
+
         # Start batch processing in a separate thread
         threading.Thread(
             target=self._batch_processing_thread,
@@ -773,10 +515,15 @@ class EvaluationTab:
             result = self.batch_results[row]
             img_path = result["path"]
             results = result.get("results")
-            
-            # Load annotated image to batch viewer
-            if results and len(results) > 0 and hasattr(results[0].boxes, 'cls'):
-                self._draw_annotated_image(img_path, results[0], self.ui.label_batch_image_viewer)
+            # Show the image name directly above the batch preview image
+            if hasattr(self.ui, "label_batch_image_name"):
+                self.ui.label_batch_image_name.setText(os.path.basename(img_path))
+            # Store for update_display_options (Show Labels / Confidence / Measurements)
+            self._last_batch_preview_path = img_path
+            self._last_batch_preview_results = results[0] if (results and len(results) > 0 and hasattr(results[0].boxes, "cls")) else None
+            # Load annotated image to batch viewer (respects current checkbox state)
+            if self._last_batch_preview_results is not None:
+                self._draw_annotated_image(img_path, self._last_batch_preview_results, self.ui.label_batch_image_viewer)
             else:
                 self._load_image_to_viewer(img_path, self.ui.label_batch_image_viewer)
 

@@ -32,13 +32,19 @@ class Event:
     
     def trigger(self, *args, **kwargs):
         """
-        Trigger the event, calling all subscribers
+        Trigger the event, calling all subscribers.
+        
+        Exceptions in individual subscribers are caught and printed
+        so that one failing callback does not break the remaining ones.
         
         Args:
             *args, **kwargs: Arguments to pass to subscribers
         """
-        for subscriber in self._subscribers:
-            subscriber(*args, **kwargs)
+        for subscriber in self._subscribers[:]:  # iterate over copy for safety
+            try:
+                subscriber(*args, **kwargs)
+            except Exception as exc:
+                print(f"[Event] subscriber {subscriber!r} raised {exc!r}")
     
     def __call__(self, *args, **kwargs):
         """

@@ -3,6 +3,18 @@ from PyQt5.QtWidgets import QToolTip, QWidget, QScrollArea, QVBoxLayout
 from PyQt5.QtCore import QPoint
 
 
+def main_window_parent(logger):
+    """
+    Parent widget for modal QFileDialog / QMessageBox.
+
+    Passing None on Windows often leaves dialogs behind the app or non-modal;
+    tabs should use the main QMainWindow from Logger(app=...) instead.
+    """
+    if logger is None:
+        return None
+    return getattr(logger, "app", None)
+
+
 def create_tooltip(widget, text):
     """
     Create a tooltip for a widget

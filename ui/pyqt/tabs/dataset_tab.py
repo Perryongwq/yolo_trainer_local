@@ -1,10 +1,23 @@
 """Dataset configuration tab for PyQt5"""
 import os
 from PyQt5.QtWidgets import QFileDialog, QMessageBox, QLabel, QLineEdit, QHBoxLayout, QWidget, QPushButton, QDialog, QVBoxLayout, QComboBox, QFormLayout
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import pyqtSignal, QEvent, QObject
 import yaml
 
 from utils.event import Event
+from ui.pyqt.common.ui_utils import main_window_parent
+
+
+class _ClassEntryFocusTracker(QObject):
+    """Tracks which class entry line edit last had focus (for Delete Class when button is clicked)."""
+    def __init__(self, dataset_tab):
+        super().__init__()
+        self._tab = dataset_tab
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.FocusIn and isinstance(obj, QLineEdit) and obj.objectName().startswith("class_entry_"):
+            self._tab._last_focused_class_entry = obj
+        return False
 
 
 class DatasetTab:
@@ -22,6 +35,7 @@ class DatasetTab:
         self.ui = ui
         self.dataset_manager = dataset_manager
         self.logger = logger
+        self._last_focused_class_entry = None  # track which class box had focus (for Delete Class)
         
         # Events
         self.on_dataset_changed = Event()
@@ -37,7 +51,6 @@ class DatasetTab:
         # YAML file browser
         self.ui.pushButton_yaml_browse.clicked.connect(self._browse_yaml_file)
         self.ui.pushButton_load_yaml.clicked.connect(self.load_yaml)
-        self.ui.pushButton_create_new.clicked.connect(self.create_new_dataset)
         
         # Dataset path browser
         self.ui.pushButton_dataset_browse.clicked.connect(self._browse_dataset_path)
@@ -50,6 +63,22 @@ class DatasetTab:
     
     def _initialize_ui(self):
         """Initialize UI with default values"""
+        # Add Class / Delete Class / Save YAML on one row (outside Classes box)
+        self.ui.verticalLayout_3.removeWidget(self.ui.pushButton_save_yaml)
+        self._class_buttons_row = QWidget()
+        self._class_buttons_row.setObjectName("class_buttons_row")
+        button_layout = QHBoxLayout(self._class_buttons_row)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        add_btn = QPushButton("Add Class")
+        add_btn.clicked.connect(self.add_class)
+        delete_btn = QPushButton("Delete Class")
+        delete_btn.clicked.connect(self.delete_class)
+        button_layout.addWidget(add_btn)
+        button_layout.addWidget(delete_btn)
+        button_layout.addStretch()
+        button_layout.addWidget(self.ui.pushButton_save_yaml)
+        self.ui.verticalLayout_3.insertWidget(2, self._class_buttons_row)
+        self._focus_tracker = _ClassEntryFocusTracker(self)
         # Set initial YAML path if available
         yaml_path = self.dataset_manager.get_yaml_path()
         if yaml_path:
@@ -58,7 +87,7 @@ class DatasetTab:
     def _browse_yaml_file(self):
         """Browse for YAML file"""
         file_path, _ = QFileDialog.getOpenFileName(
-            None,
+            main_window_parent(self.logger),
             "Select YAML file",
             "",
             "YAML files (*.yaml);;All files (*.*)"
@@ -72,7 +101,7 @@ class DatasetTab:
     def _browse_dataset_path(self):
         """Browse for dataset directory"""
         folder_path = QFileDialog.getExistingDirectory(
-            None,
+            main_window_parent(self.logger),
             "Select Dataset Folder"
         )
         
@@ -83,6 +112,17 @@ class DatasetTab:
         """Handle quick select combobox change"""
         if text:
             self.ui.lineEdit_yaml_path.setText(text)
+            self.dataset_manager.set_yaml_path(text)
+
+    def _classes_in_chronological_order(self, raw_names):
+        """Return class names as a list in index order (class 0, 1, 2, ...). Handles YAML 'names' as list or dict."""
+        if raw_names is None:
+            return []
+        if isinstance(raw_names, list):
+            return list(raw_names)
+        if isinstance(raw_names, dict):
+            return [raw_names[k] for k in sorted(raw_names.keys())]
+        return []
     
     def load_yaml(self):
         """Load a YAML file and update the UI"""
@@ -105,8 +145,9 @@ class DatasetTab:
                 if child.widget():
                     child.widget().deleteLater()
             
-            # Add new class entries
-            classes = dataset_content.get('names', [])
+            # Add new class entries in chronological order (class 0, 1, 2, ...)
+            raw_names = dataset_content.get('names', [])
+            classes = self._classes_in_chronological_order(raw_names)
             for i, class_name in enumerate(classes):
                 class_widget = QWidget()
                 class_layout = QHBoxLayout(class_widget)
@@ -115,18 +156,14 @@ class DatasetTab:
                 label = QLabel(f"Class {i}:")
                 entry = QLineEdit(class_name)
                 entry.setObjectName(f"class_entry_{i}")
+                entry.installEventFilter(self._focus_tracker)
                 
                 class_layout.addWidget(label)
                 class_layout.addWidget(entry)
                 
                 layout.addWidget(class_widget)
             
-            # Add button for adding a new class
-            add_button = QPushButton("Add Class")
-            add_button.clicked.connect(self.add_class)
-            layout.addWidget(add_button)
-            
-            # Add spacer
+            # Spacer so class list stays at top
             layout.addStretch()
             
             self.logger.info(f"Loaded YAML file: {os.path.basename(yaml_file)}")
@@ -153,13 +190,8 @@ class DatasetTab:
                         class_count += 1
                         break
         
-        # Remove the "Add Class" button and spacer temporarily
-        items_to_restore = []
-        while layout.count():
-            item = layout.takeAt(layout.count() - 1)
-            items_to_restore.insert(0, item)
-            if isinstance(item.widget(), QPushButton):
-                break
+        # Remove the spacer temporarily (last item)
+        spacer_item = layout.takeAt(layout.count() - 1) if layout.count() else None
         
         # Add new class entry
         class_widget = QWidget()
@@ -169,18 +201,66 @@ class DatasetTab:
         label = QLabel(f"Class {class_count}:")
         entry = QLineEdit()
         entry.setObjectName(f"class_entry_{class_count}")
+        entry.installEventFilter(self._focus_tracker)
         
         class_layout.addWidget(label)
         class_layout.addWidget(entry)
         
         layout.addWidget(class_widget)
         
-        # Restore the "Add Class" button and spacer
-        for item in items_to_restore:
-            if item.widget():
-                layout.addWidget(item.widget())
-            elif item.spacerItem():
-                layout.addItem(item.spacerItem())
+        # Restore the spacer
+        if spacer_item:
+            layout.addItem(spacer_item)
+
+    def delete_class(self):
+        """Remove the class row whose text box you were last in (cursor was idling there)."""
+        layout = self.ui.verticalLayout_classes_content
+        if layout.count() <= 1:
+            return
+        entry = self._last_focused_class_entry
+        target_row = entry.parent() if entry else None
+        if not target_row or not isinstance(entry, QLineEdit) or not entry.objectName().startswith("class_entry_"):
+            QMessageBox.information(
+                None,
+                "Delete Class",
+                "Click in the class name field you want to delete, then press Delete Class.",
+            )
+            return
+        index_to_remove = -1
+        for i in range(layout.count() - 1):
+            item = layout.itemAt(i)
+            if item and item.widget() is target_row:
+                index_to_remove = i
+                break
+        if index_to_remove < 0:
+            return
+        item = layout.takeAt(index_to_remove)
+        row_widget = item.widget()
+        if row_widget:
+            row_widget.setParent(None)
+            row_widget.deleteLater()
+        self._last_focused_class_entry = None
+        self._renumber_class_labels()
+        self.logger.info("Removed selected class from list")
+
+    def _renumber_class_labels(self):
+        """Renumber Class 0, Class 1, ... and objectNames after a delete."""
+        layout = self.ui.verticalLayout_classes_content
+        idx = 0
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
+            if not item or not item.widget():
+                continue
+            w = item.widget()
+            for label in w.findChildren(QLabel):
+                if label.text().startswith("Class "):
+                    label.setText(f"Class {idx}:")
+                    break
+            for line_edit in w.findChildren(QLineEdit):
+                if line_edit.objectName().startswith("class_entry_"):
+                    line_edit.setObjectName(f"class_entry_{idx}")
+                    idx += 1
+                    break
     
     def save_yaml_changes(self):
         """Save changes to the YAML file"""
@@ -229,7 +309,7 @@ class DatasetTab:
     def create_new_dataset(self):
         """Create a new YAML dataset file"""
         file_path, _ = QFileDialog.getSaveFileName(
-            None,
+            main_window_parent(self.logger),
             "Create New Dataset YAML",
             "",
             "YAML files (*.yaml);;All files (*.*)"

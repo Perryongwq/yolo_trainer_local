@@ -2,8 +2,11 @@
 import os
 import cv2
 import numpy as np
-from PyQt5.QtWidgets import QFileDialog, QMessageBox, QCheckBox, QWidget, QVBoxLayout, QTableWidgetItem
-from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtWidgets import QFileDialog, QMessageBox, QTableWidgetItem
+
+from ui.pyqt.common.ui_utils import main_window_parent
+from utils.image_rendering import draw_annotation_boxes, cv_to_pixmap, fit_pixmap
+from PyQt5.QtGui import QPixmap, QImage, QIntValidator
 from PyQt5.QtCore import Qt
 
 
@@ -31,7 +34,6 @@ class AnnotationTab:
         
         # Variables
         self.current_image_index = 0
-        self.class_checkboxes = {}  # Dictionary to hold checkboxes for each class
         
         # Connect UI signals to handlers
         self._connect_signals()
@@ -67,15 +69,13 @@ class AnnotationTab:
         # Navigation buttons
         self.ui.pushButton_previous.clicked.connect(self.previous_image)
         self.ui.pushButton_next.clicked.connect(self.next_image)
+        if hasattr(self.ui, "lineEdit_annotation_page"):
+            self.ui.lineEdit_annotation_page.returnPressed.connect(self._jump_to_image_page)
         
         # Annotation buttons
         self.ui.pushButton_annotate_current.clicked.connect(self.annotate_current)
         self.ui.pushButton_annotate_all.clicked.connect(self.annotate_batch)
         self.ui.pushButton_save_annotations.clicked.connect(self.save_annotations)
-        
-        # Class selection buttons
-        self.ui.pushButton_select_all.clicked.connect(self.select_all_classes)
-        self.ui.pushButton_deselect_all.clicked.connect(self.deselect_all_classes)
         
         # Annotation details buttons
         self.ui.pushButton_delete_annotation.clicked.connect(self.delete_selected_annotation)
@@ -96,11 +96,26 @@ class AnnotationTab:
             self.logger.info("SAM is available. You can use 'YOLO+SAM Hybrid' mode for better boundaries.")
         else:
             self.logger.info("SAM not installed. Only 'YOLO Only' mode is available. To enable SAM: pip install segment-anything")
+        
+        if hasattr(self.ui, "lineEdit_annotation_page"):
+            self.ui.lineEdit_annotation_page.setValidator(
+                QIntValidator(1, 1, self.ui.lineEdit_annotation_page)
+            )
+            self._update_annotation_page_controls()
+
+    def _scale_pixmap_to_fit(self, pixmap):
+        """Scale pixmap to fit inside the annotation viewer frame while keeping aspect ratio."""
+        if pixmap.isNull():
+            return pixmap
+        label = self.ui.label_annotation_viewer
+        w = max(label.width(), 600)
+        h = max(label.height(), 400)
+        return fit_pixmap(pixmap, w, h)
     
     def _browse_yolo_model(self):
         """Browse for YOLO model file"""
         file_path, _ = QFileDialog.getOpenFileName(
-            None,
+            main_window_parent(self.logger),
             "Select YOLO Model",
             "",
             "PyTorch Models (*.pt);;All files (*.*)"
@@ -114,7 +129,7 @@ class AnnotationTab:
         """Browse for SAM model file"""
         # Show help message if SAM is not available
         if not self.sam_available:
-            msg = QMessageBox()
+            msg = QMessageBox(main_window_parent(self.logger))
             msg.setIcon(QMessageBox.Information)
             msg.setWindowTitle("SAM Installation Required")
             msg.setText("Segment Anything Model (SAM) is not installed.")
@@ -134,7 +149,7 @@ class AnnotationTab:
             return
         
         file_path, _ = QFileDialog.getOpenFileName(
-            None,
+            main_window_parent(self.logger),
             "Select SAM Model (vit_b, vit_l, or vit_h)",
             "",
             "PyTorch Models (*.pth);;All files (*.*)"
@@ -147,17 +162,12 @@ class AnnotationTab:
     def _browse_annotation_folder(self):
         """Browse for annotation folder"""
         folder_path = QFileDialog.getExistingDirectory(
-            None,
+            main_window_parent(self.logger),
             "Select Image Folder"
         )
         
         if folder_path:
             self.ui.lineEdit_annotation_folder.setText(folder_path)
-            
-            # Set default output folder
-            if not self.ui.lineEdit_output_folder.text():
-                output_path = os.path.join(folder_path, "labels")
-                self.ui.lineEdit_output_folder.setText(output_path)
             
             # Load image list
             image_files = self.annotation_manager.set_image_folder(folder_path)
@@ -167,12 +177,14 @@ class AnnotationTab:
                 self.load_current_image()
                 self.logger.info(f"Loaded {len(image_files)} images from {folder_path}")
             else:
+                self._update_annotation_image_name()
+                self._update_annotation_page_controls()
                 self.logger.info(f"No images found in {folder_path}")
     
     def _browse_output_folder(self):
         """Browse for output folder"""
         folder_path = QFileDialog.getExistingDirectory(
-            None,
+            main_window_parent(self.logger),
             "Select Output Folder"
         )
         
@@ -205,8 +217,6 @@ class AnnotationTab:
                 success = self.model_manager.load_model(yolo_path)
                 
                 if success:
-                    # Update class checkboxes
-                    self.update_class_checkboxes()
                     self.logger.info(f"YOLO model loaded: {os.path.basename(yolo_path)}")
                 else:
                     QMessageBox.critical(None, "Error", "Failed to load YOLO model")
@@ -258,58 +268,68 @@ class AnnotationTab:
         
         return True
     
-    def update_class_checkboxes(self):
-        """Populate the class list with checkboxes based on the loaded YOLO model's class names"""
-        # Clear existing checkboxes
-        layout = self.ui.verticalLayout_annotation_classes_content
-        while layout.count():
-            child = layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
-        
-        self.class_checkboxes.clear()
-        
-        # Get class names from model manager
-        class_names = self.model_manager.class_names
-        
-        if class_names:
-            for idx, class_name in class_names.items():
-                checkbox = QCheckBox(f"{idx}: {class_name}")
-                checkbox.setChecked(True)  # Check all by default
-                layout.addWidget(checkbox)
-                self.class_checkboxes[idx] = checkbox
+    def _update_annotation_image_name(self):
+        """Show the current image filename above the preview image."""
+        if not hasattr(self.ui, "label_annotation_image_name"):
+            return
+        image_files = self.annotation_manager.image_files
+        if not image_files:
+            self.ui.label_annotation_image_name.setText("")
+            return
+        idx = max(0, min(self.current_image_index, len(image_files) - 1))
+        filename = os.path.basename(image_files[idx])
+        self.ui.label_annotation_image_name.setText(filename)
+
+    def _update_annotation_page_controls(self):
+        """Sync page input and total-count label with current image state."""
+        if not hasattr(self.ui, "lineEdit_annotation_page"):
+            return
+        image_files = self.annotation_manager.image_files
+        total = len(image_files) if image_files else 0
+        if hasattr(self.ui, "label_annotation_page_total"):
+            self.ui.label_annotation_page_total.setText(f"/ {total}")
+        if total == 0:
+            self.ui.lineEdit_annotation_page.setText("")
+            return
+        current_page = self.current_image_index + 1
+        self.ui.lineEdit_annotation_page.setText(str(current_page))
+        validator = self.ui.lineEdit_annotation_page.validator()
+        if isinstance(validator, QIntValidator):
+            validator.setTop(total)
+
+    def _jump_to_image_page(self):
+        """Jump to the image page entered by the user (1-based)."""
+        if not hasattr(self.ui, "lineEdit_annotation_page"):
+            return
+        image_files = self.annotation_manager.image_files
+        total = len(image_files) if image_files else 0
+        if total == 0:
+            self.ui.lineEdit_annotation_page.setText("")
+            return
+        raw = self.ui.lineEdit_annotation_page.text().strip()
+        if not raw.isdigit():
+            self._update_annotation_page_controls()
+            return
+        page = max(1, min(int(raw), total))
+        target_index = page - 1
+        if target_index != self.current_image_index:
+            self.current_image_index = target_index
+            self.load_current_image()
         else:
-            from PyQt5.QtWidgets import QLabel
-            label = QLabel("Load YOLO model to see classes.")
-            layout.addWidget(label)
-        
-        layout.addStretch()
-    
-    def get_selected_classes(self):
-        """Returns a list of class IDs for currently selected checkboxes"""
-        selected_classes = []
-        for class_id, checkbox in self.class_checkboxes.items():
-            if checkbox.isChecked():
-                selected_classes.append(class_id)
-        return selected_classes
-    
-    def select_all_classes(self):
-        """Checks all class checkboxes"""
-        for checkbox in self.class_checkboxes.values():
-            checkbox.setChecked(True)
-    
-    def deselect_all_classes(self):
-        """Unchecks all class checkboxes"""
-        for checkbox in self.class_checkboxes.values():
-            checkbox.setChecked(False)
-    
+            self._update_annotation_page_controls()
+
     def load_current_image(self):
         """Load and display the current image with annotations"""
         image_files = self.annotation_manager.image_files
         if not image_files or self.current_image_index < 0 or self.current_image_index >= len(image_files):
+            self._update_annotation_image_name()
+            self._update_annotation_page_controls()
             return
         
         img_path = image_files[self.current_image_index]
+        filename = os.path.basename(img_path)
+        self._update_annotation_image_name()
+        self._update_annotation_page_controls()
         
         # Get annotations for this image
         annotations = self.annotation_manager.get_annotations(img_path)
@@ -318,96 +338,32 @@ class AnnotationTab:
         if annotations:
             self._draw_annotated_image(img_path, annotations)
         else:
-            # Load plain image if no annotations
+            # Load plain image if no annotations; scale to fit viewer frame
             pixmap = QPixmap(img_path)
             if not pixmap.isNull():
-                # Scale to 50% of original size
-                scaled_pixmap = pixmap.scaled(
-                    pixmap.width() // 2,
-                    pixmap.height() // 2,
-                    Qt.KeepAspectRatio,
-                    Qt.SmoothTransformation
-                )
-                self.ui.label_annotation_viewer.setPixmap(scaled_pixmap)
+                self.ui.label_annotation_viewer.setPixmap(self._scale_pixmap_to_fit(pixmap))
         
         # Update annotation table
         self.update_annotation_table(img_path)
         
         # Update status
-        filename = os.path.basename(img_path)
         index = self.current_image_index + 1
         total = len(image_files)
         self.logger.info(f"Image {index}/{total}: {filename}")
     
     def _draw_annotated_image(self, image_path, annotations):
-        """Draw bounding boxes on the image"""
-        # Read image with OpenCV
+        """Draw bounding boxes on the image using shared renderer."""
         img = cv2.imread(image_path)
         if img is None:
             self.ui.label_annotation_viewer.setText("Failed to load image")
             return
-        
-        # Convert BGR to RGB
+
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        h, w = img_rgb.shape[:2]
-        
-        # Draw bounding boxes for each annotation
-        for anno in annotations:
-            bbox = anno['bbox']  # [xmin, ymin, xmax, ymax] in pixel coordinates
-            class_id = anno['class_id']
-            confidence = anno.get('confidence', 1.0)
-            
-            # Get corner coordinates (already in pixel format)
-            x1 = int(bbox[0])
-            y1 = int(bbox[1])
-            x2 = int(bbox[2])
-            y2 = int(bbox[3])
-            
-            # Get class name
-            class_name = self.model_manager.get_class_name(class_id)
-            
-            # Draw bounding box
-            color = (0, 255, 0)  # Green in RGB
-            thickness = 2
-            cv2.rectangle(img_rgb, (x1, y1), (x2, y2), color, thickness)
-            
-            # Prepare label text
-            label_text = f"{class_name} {confidence:.2f}"
-            
-            # Calculate text size for background
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.7
-            font_thickness = 2
-            (text_width, text_height), baseline = cv2.getTextSize(
-                label_text, font, font_scale, font_thickness)
-            
-            # Draw background rectangle for text
-            cv2.rectangle(img_rgb, 
-                        (x1, y1 - text_height - baseline - 5),
-                        (x1 + text_width + 5, y1),
-                        color, -1)
-            
-            # Draw text
-            cv2.putText(img_rgb, label_text,
-                      (x1 + 2, y1 - baseline - 2),
-                      font, font_scale, (255, 255, 255), font_thickness)
-        
-        # Convert to QPixmap
-        height, width, channel = img_rgb.shape
-        bytes_per_line = 3 * width
-        q_image = QImage(img_rgb.data, width, height, bytes_per_line, QImage.Format_RGB888)
-        pixmap = QPixmap.fromImage(q_image)
-        
-        # Display at 50% size
+        draw_annotation_boxes(img_rgb, annotations, self.model_manager.get_class_name)
+
+        pixmap = cv_to_pixmap(img_rgb)
         if not pixmap.isNull():
-            # Scale image to 50% of original size
-            scaled_pixmap = pixmap.scaled(
-                pixmap.width() // 2, 
-                pixmap.height() // 2,
-                Qt.KeepAspectRatio,
-                Qt.SmoothTransformation
-            )
-            self.ui.label_annotation_viewer.setPixmap(scaled_pixmap)
+            self.ui.label_annotation_viewer.setPixmap(self._scale_pixmap_to_fit(pixmap))
         else:
             self.ui.label_annotation_viewer.setText("Failed to create annotated image")
     
@@ -476,18 +432,17 @@ class AnnotationTab:
         
         # Get annotation parameters
         confidence_threshold = self.ui.slider_annotation_confidence.value() / 100.0
-        selected_classes = self.get_selected_classes()
         mode_text = self.ui.comboBox_annotation_mode.currentText()
         mode = {"YOLO Only": "yolo", "SAM Only": "sam", "YOLO+SAM Hybrid": "hybrid"}.get(mode_text, "yolo")
         
         self.logger.info(f"Annotating {os.path.basename(img_path)}...")
         
-        # Run annotation using annotation manager
+        # Run annotation using annotation manager (None = all model classes)
         annotations = self.annotation_manager.annotate_image(
             img_path,
             self.model_manager.model,
             confidence_threshold,
-            selected_classes,
+            None,
             mode
         )
         
@@ -510,7 +465,6 @@ class AnnotationTab:
         
         # Get annotation parameters
         confidence_threshold = self.ui.slider_annotation_confidence.value() / 100.0
-        selected_classes = self.get_selected_classes()
         mode_text = self.ui.comboBox_annotation_mode.currentText()
         mode = {"YOLO Only": "yolo", "SAM Only": "sam", "YOLO+SAM Hybrid": "hybrid"}.get(mode_text, "yolo")
         
@@ -539,7 +493,7 @@ class AnnotationTab:
         self.annotation_manager.annotate_batch(
             self.model_manager.model,
             confidence_threshold,
-            selected_classes,
+            None,
             mode
         )
     
@@ -622,7 +576,6 @@ class AnnotationTab:
     def update_model_info(self, model, model_path, class_names):
         """Update model information"""
         self.ui.lineEdit_yolo_model.setText(model_path)
-        self.update_class_checkboxes()
         self.logger.info(f"YOLO model loaded: {os.path.basename(model_path)}")
         
         # Show SAM status if loaded

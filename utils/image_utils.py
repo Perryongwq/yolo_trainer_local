@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from PIL import Image, ImageTk
+from PIL import Image
 import random
 import os
 
@@ -300,29 +300,4 @@ def overlay_masks(image, masks, colors=None, alpha=0.5):
     
     return result
 
-def to_tkinter_image(image, size=None):
-    """
-    Convert an OpenCV image to a Tkinter-compatible PhotoImage
-    
-    Args:
-        image: OpenCV image (numpy array)
-        size: Optional tuple of (width, height) for resizing
-        
-    Returns:
-        Tkinter-compatible PhotoImage
-    """
-    # Ensure image is in RGB format
-    if len(image.shape) == 2:
-        image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-    elif image.shape[2] == 4:
-        image = cv2.cvtColor(image, cv2.COLOR_RGBA2RGB)
-    
-    # Resize if needed
-    if size:
-        image = resize_image(image, size)
-    
-    # Convert to PIL Image
-    pil_image = Image.fromarray(image)
-    
-    # Convert to PhotoImage
-    return ImageTk.PhotoImage(pil_image)
+
